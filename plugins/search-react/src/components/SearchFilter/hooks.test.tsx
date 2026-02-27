@@ -25,6 +25,11 @@ import { configApiRef } from '@backstage/core-plugin-api';
 
 jest.useFakeTimers();
 
+afterEach(() => {
+  jest.runOnlyPendingTimers();
+  jest.useRealTimers();
+});
+
 describe('SearchFilter.hooks', () => {
   describe('useDefaultFilterValue', () => {
     const configApiMock = mockApis.config({
@@ -275,19 +280,19 @@ describe('SearchFilter.hooks', () => {
       const asyncFn = jest.fn().mockResolvedValue(expectedValues);
       renderHook(() => useAsyncFilterValues(asyncFn, '', undefined, 1000));
 
-      expect(asyncFn).not.toHaveBeenCalled();
+      expect(asyncFn).toHaveBeenCalledTimes(0);
 
-      // Advance timers by 600ms
+      // Advance timers by 600ms, still below the 1000ms debounce window
       await act(async () => {
         jest.advanceTimersByTime(600);
       });
-      expect(asyncFn).not.toHaveBeenCalled();
+      expect(asyncFn).toHaveBeenCalledTimes(0);
 
-      // Another 600ms to exceed the 1000ms debounce
+      // Advance past the debounce window and verify exactly one invocation
       await act(async () => {
         jest.advanceTimersByTime(600);
       });
-      expect(asyncFn).toHaveBeenCalled();
+      expect(asyncFn).toHaveBeenCalledTimes(1);
     });
 
     it('should call provided method once per provided input', async () => {
