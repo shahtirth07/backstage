@@ -113,34 +113,42 @@ describe('<AlertDisplay />', () => {
 
     it('renders message and then removes it', async () => {
       jest.useFakeTimers();
-      const { queryByText } = await renderInTestApp(
-        <TestApiProvider apis={apis}>
-          <AlertDisplay />
-        </TestApiProvider>,
-      );
+      try {
+        const { queryByText } = await renderInTestApp(
+          <TestApiProvider apis={apis}>
+            <AlertDisplay />
+          </TestApiProvider>,
+        );
 
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      act(() => {
-        jest.advanceTimersByTime(5005);
-      });
-      expect(queryByText('transient message one')).not.toBeInTheDocument();
-      jest.useRealTimers();
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(5005);
+        });
+        expect(queryByText('transient message one')).not.toBeInTheDocument();
+      } finally {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+      }
     });
 
     it('respects transientTimeoutMs prop', async () => {
       jest.useFakeTimers();
-      const { queryByText } = await renderInTestApp(
-        <TestApiProvider apis={apis}>
-          <AlertDisplay transientTimeoutMs={2500} />
-        </TestApiProvider>,
-      );
+      try {
+        const { queryByText } = await renderInTestApp(
+          <TestApiProvider apis={apis}>
+            <AlertDisplay transientTimeoutMs={2500} />
+          </TestApiProvider>,
+        );
 
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      act(() => {
-        jest.advanceTimersByTime(2505);
-      });
-      expect(queryByText('transient message one')).not.toBeInTheDocument();
-      jest.useRealTimers();
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(2505);
+        });
+        expect(queryByText('transient message one')).not.toBeInTheDocument();
+      } finally {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -177,111 +185,123 @@ describe('<AlertDisplay />', () => {
 
     it('renders message and then removes it', async () => {
       jest.useFakeTimers();
-      const { queryByText } = await renderInTestApp(
-        <TestApiProvider apis={apis}>
-          <AlertDisplay />
-        </TestApiProvider>,
-      );
-      // Validate adding messages
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      expect(queryByText('(2 newer messages)')).toBeInTheDocument();
+      try {
+        const { queryByText } = await renderInTestApp(
+          <TestApiProvider apis={apis}>
+            <AlertDisplay />
+          </TestApiProvider>,
+        );
+        // Validate adding messages
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        expect(queryByText('(2 newer messages)')).toBeInTheDocument();
 
-      // Validate removing messages
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-      expect(queryByText('transient message two')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        // Validate removing messages
+        act(() => {
+          jest.advanceTimersByTime(5000);
+        });
+        expect(queryByText('transient message two')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
 
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-      expect(queryByText('transient message three')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(5000);
+        });
+        expect(queryByText('transient message three')).toBeInTheDocument();
 
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-      expect(queryByText('transient message')).not.toBeInTheDocument();
-      jest.useRealTimers();
+        act(() => {
+          jest.advanceTimersByTime(5000);
+        });
+        expect(queryByText('transient message')).not.toBeInTheDocument();
+      } finally {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+      }
     });
 
     it('renders 3 different messages with overlapping timeout', async () => {
       jest.useFakeTimers();
-      const { queryByText } = await renderInTestApp(
-        <TestApiProvider apis={apis}>
-          <AlertDisplay transientTimeoutMs={1500} />
-        </TestApiProvider>,
-      );
+      try {
+        const { queryByText } = await renderInTestApp(
+          <TestApiProvider apis={apis}>
+            <AlertDisplay transientTimeoutMs={1500} />
+          </TestApiProvider>,
+        );
 
-      // 3 messages stacked with 1.5s each, display times: 0-1.5, 1.5-3, 3-4.5
+        // 3 messages stacked with 1.5s each, display times: 0-1.5, 1.5-3, 3-4.5
 
-      // 0s in, only message 1
-      expect(queryByText('transient message one')).toBeInTheDocument();
+        // 0s in, only message 1
+        expect(queryByText('transient message one')).toBeInTheDocument();
 
-      // 1s in, message 1 still shown, message 2 added in background
-      act(() => jest.advanceTimersByTime(1000));
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        // 1s in, message 1 still shown, message 2 added in background
+        act(() => jest.advanceTimersByTime(1000));
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
 
-      // 2s in, message 2 now shown, message 3 added
-      act(() => jest.advanceTimersByTime(1000));
-      expect(queryByText('transient message two')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        // 2s in, message 2 now shown, message 3 added
+        act(() => jest.advanceTimersByTime(1000));
+        expect(queryByText('transient message two')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
 
-      // 3.5s in, message 3 now shown
-      act(() => jest.advanceTimersByTime(1500));
-      expect(queryByText('transient message three')).toBeInTheDocument();
+        // 3.5s in, message 3 now shown
+        act(() => jest.advanceTimersByTime(1500));
+        expect(queryByText('transient message three')).toBeInTheDocument();
 
-      // 5s in, all messages gone
-      act(() => jest.advanceTimersByTime(1500));
-      expect(queryByText('transient message three')).not.toBeInTheDocument();
-      jest.useRealTimers();
+        // 5s in, all messages gone
+        act(() => jest.advanceTimersByTime(1500));
+        expect(queryByText('transient message three')).not.toBeInTheDocument();
+      } finally {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+      }
     });
 
     it('renders 3 different messages with overlapping timeout and manual removal', async () => {
       jest.useFakeTimers();
-      const { queryByText } = await renderInTestApp(
-        <TestApiProvider apis={apis}>
-          <AlertDisplay transientTimeoutMs={1500} />
-        </TestApiProvider>,
-      );
+      try {
+        const { queryByText } = await renderInTestApp(
+          <TestApiProvider apis={apis}>
+            <AlertDisplay transientTimeoutMs={1500} />
+          </TestApiProvider>,
+        );
 
-      // 3 messages stacked with 1.5s each, display times: 0-1.5, 1.5-3, 3-4.5
+        // 3 messages stacked with 1.5s each, display times: 0-1.5, 1.5-3, 3-4.5
 
-      // 0s in, only message 1
-      expect(queryByText('transient message one')).toBeInTheDocument();
+        // 0s in, only message 1
+        expect(queryByText('transient message one')).toBeInTheDocument();
 
-      // 1s in, message 1 still shown, message 2 added in background
-      act(() => jest.advanceTimersByTime(1000));
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        // 1s in, message 1 still shown, message 2 added in background
+        act(() => jest.advanceTimersByTime(1000));
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
 
-      // manually remove message 1
-      fireEvent.click(screen.getByTestId('error-button-close'));
-      expect(screen.getByText('transient message two')).toBeInTheDocument();
+        // manually remove message 1
+        fireEvent.click(screen.getByTestId('error-button-close'));
+        expect(screen.getByText('transient message two')).toBeInTheDocument();
 
-      // 2s in, message 2 now shown, message 3 added
-      act(() => jest.advanceTimersByTime(1000));
-      expect(queryByText('transient message two')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        // 2s in, message 2 now shown, message 3 added
+        act(() => jest.advanceTimersByTime(1000));
+        expect(queryByText('transient message two')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
 
-      // 3s in, message 3 now shown
-      act(() => jest.advanceTimersByTime(1500));
-      expect(queryByText('transient message three')).toBeInTheDocument();
+        // 3s in, message 3 now shown
+        act(() => jest.advanceTimersByTime(1500));
+        expect(queryByText('transient message three')).toBeInTheDocument();
 
-      // 4s in, all messages gone
-      act(() => jest.advanceTimersByTime(1500));
-      expect(queryByText('transient message three')).not.toBeInTheDocument();
-      jest.useRealTimers();
+        // 4s in, all messages gone
+        act(() => jest.advanceTimersByTime(1500));
+        expect(queryByText('transient message three')).not.toBeInTheDocument();
+      } finally {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -318,39 +338,43 @@ describe('<AlertDisplay />', () => {
 
     it('renders message and then removes it', async () => {
       jest.useFakeTimers();
-      const { queryByText } = await renderInTestApp(
-        <TestApiProvider apis={apis}>
-          <AlertDisplay />
-        </TestApiProvider>,
-      );
-      // Validate adding messages
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-      expect(queryByText('transient message one')).toBeInTheDocument();
-      expect(queryByText('(2 newer messages)')).toBeInTheDocument();
+      try {
+        const { queryByText } = await renderInTestApp(
+          <TestApiProvider apis={apis}>
+            <AlertDisplay />
+          </TestApiProvider>,
+        );
+        // Validate adding messages
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+        expect(queryByText('transient message one')).toBeInTheDocument();
+        expect(queryByText('(2 newer messages)')).toBeInTheDocument();
 
-      // Validate removing messages
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-      expect(queryByText('permanent message')).toBeInTheDocument();
-      expect(queryByText('(1 newer message)')).toBeInTheDocument();
+        // Validate removing messages
+        act(() => {
+          jest.advanceTimersByTime(5000);
+        });
+        expect(queryByText('permanent message')).toBeInTheDocument();
+        expect(queryByText('(1 newer message)')).toBeInTheDocument();
 
-      fireEvent.click(screen.getByTestId('error-button-close'));
-      expect(queryByText('transient message three')).toBeInTheDocument();
+        fireEvent.click(screen.getByTestId('error-button-close'));
+        expect(queryByText('transient message three')).toBeInTheDocument();
 
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-      expect(queryByText('transient message')).not.toBeInTheDocument();
-      jest.useRealTimers();
+        act(() => {
+          jest.advanceTimersByTime(5000);
+        });
+        expect(queryByText('transient message')).not.toBeInTheDocument();
+      } finally {
+        jest.runOnlyPendingTimers();
+        jest.useRealTimers();
+      }
     });
   });
 });

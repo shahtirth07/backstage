@@ -67,26 +67,29 @@ describe('useLogoutDisconnectedUserEffect', () => {
   it('should call signOut if idle timeout passed', () => {
     jest.useFakeTimers();
 
-    const props: UseLogoutDisconnectedUserEffectProps = {
-      enableEffect: true,
-      autologoutIsEnabled: true,
-      idleTimeoutSeconds: 1,
-      lastSeenOnlineStore: {
-        ...mockTimestampStore,
-        get: jest.fn().mockReturnValue(new Date(Date.now() - 2000)), // 2 seconds before now
-      },
-      identityApi: mockIdentityApi,
-    };
+    try {
+      const props: UseLogoutDisconnectedUserEffectProps = {
+        enableEffect: true,
+        autologoutIsEnabled: true,
+        idleTimeoutSeconds: 1,
+        lastSeenOnlineStore: {
+          ...mockTimestampStore,
+          get: jest.fn().mockReturnValue(new Date(Date.now() - 2000)), // 2 seconds before now
+        },
+        identityApi: mockIdentityApi,
+      };
 
-    renderHook(() => useLogoutDisconnectedUserEffect(props));
+      renderHook(() => useLogoutDisconnectedUserEffect(props));
 
-    act(() => {
-      jest.advanceTimersByTime(2000);
-    });
+      act(() => {
+        jest.advanceTimersByTime(2000);
+      });
 
-    expect(mockIdentityApi.signOut).toHaveBeenCalled();
-
-    jest.useRealTimers();
+      expect(mockIdentityApi.signOut).toHaveBeenCalled();
+    } finally {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    }
   });
 
   it('should save the current time to the store when app is loaded', () => {
