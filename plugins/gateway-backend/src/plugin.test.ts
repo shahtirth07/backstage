@@ -105,6 +105,14 @@ describe('gateway', () => {
                 res.json({ bar: true });
               });
 
+              router.get('/echo/:id', (req, res) => {
+                res.json({
+                  id: req.params.id,
+                  path: req.path,
+                  query: req.query,
+                });
+              });
+
               router.get('/endpoint-sse', async (_req, res) => {
                 res.setHeader('Content-Type', 'text/event-stream');
                 res.setHeader('Cache-Control', 'no-cache');
@@ -151,6 +159,14 @@ describe('gateway', () => {
     expect(data).toEqual({ foo: true });
   });
 
+  it('should bypass proxying for installed plugins', async () => {
+    discovery.getBaseUrl.mockClear();
+
+    const response = await fetch('http://localhost:7777/api/dummy/foo');
+    expect(response.status).toBe(200);
+    expect(discovery.getBaseUrl).not.toHaveBeenCalled();
+  });
+
   it('should proxy requests for unknown plugins', async () => {
     const response = await fetch(
       'http://localhost:7777/api/external-plugin/foo',
@@ -159,6 +175,26 @@ describe('gateway', () => {
 
     const data = await response.json();
     expect(data).toEqual({ bar: true });
+  });
+
+  it('should preserve path and query parameters when proxying', async () => {
+    discovery.getBaseUrl.mockClear();
+
+    const response = await fetch(
+      'http://localhost:7777/api/external-plugin/echo/resource-123?source=gateway&count=1',
+    );
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data).toMatchObject({
+      id: 'resource-123',
+      path: '/echo/resource-123',
+      query: {
+        source: 'gateway',
+        count: '1',
+      },
+    });
+    expect(discovery.getBaseUrl).toHaveBeenCalledWith('external-plugin');
   });
 
   it('should detect looped requests', async () => {
