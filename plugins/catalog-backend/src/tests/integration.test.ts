@@ -56,6 +56,7 @@ import { mockServices, TestDatabases } from '@backstage/backend-test-utils';
 import { LoggerService } from '@backstage/backend-plugin-api';
 import { entitiesResponseToObjects } from '../service/response';
 import { deleteOrphanedEntities } from '../database/operations/util/deleteOrphanedEntities';
+import { performStitching } from '../database/operations/stitcher/performStitching';
 
 const voidLogger = mockServices.logger.mock();
 
@@ -210,6 +211,7 @@ class TestHarness {
     enableRelationsCompatibility?: boolean;
     logger?: LoggerService;
     db: Knex;
+    stitchingMode?: 'immediate' | 'deferred';
     permissions?: PermissionEvaluator;
     additionalProviders?: EntityProvider[];
     processEntity?(
@@ -227,7 +229,7 @@ class TestHarness {
       },
       catalog: {
         stitchingStrategy: {
-          mode: 'immediate',
+          mode: options.stitchingMode ?? 'immediate',
         },
       },
     });
@@ -411,6 +413,15 @@ class TestHarness {
     });
   }
 
+  async stitchEntity(entityRef: string) {
+    return await performStitching({
+      knex: this.#db,
+      logger: voidLogger,
+      strategy: { mode: 'immediate' },
+      entityRef,
+    });
+  }
+
   async getRefreshState(): Promise<
     Record<
       string,
@@ -455,7 +466,7 @@ class TestHarness {
 }
 
 describe('Catalog Backend Integration', () => {
-  const databases = TestDatabases.create({ ids: ['SQLITE_3'] });
+  const databases = TestDatabases.create({ ids: ['SQLITE_3', 'POSTGRES_14'] });
 
   it('should add entities and update errors', async () => {
     let triggerError = false;
@@ -837,6 +848,238 @@ describe('Catalog Backend Integration', () => {
         .annotations!['backstage.io/orphan'],
     ).toBeUndefined();
   });
+
+  describe.each(databases.eachSupportedId())(
+    'relation stitching edge cases in %p',
+    databaseId => {
+      function makeComponent(name: string): Entity {
+        return {
+          apiVersion: 'backstage.io/v1alpha1',
+          kind: 'Component',
+          metadata: {
+            name,
+            annotations: {
+              'backstage.io/managed-by-location': 'url:.',
+              'backstage.io/managed-by-origin-location': 'url:.',
+            },
+          },
+        };
+      }
+
+      function makeComponentRef(name: string) {
+        return {
+          kind: 'Component',
+          namespace: 'default',
+          name,
+        };
+      }
+
+      function expectNoDanglingRelations(entities: Record<string, Entity>) {
+        const entityRefs = new Set(Object.keys(entities));
+        for (const entity of Object.values(entities)) {
+          for (const relation of entity.relations ?? []) {
+            expect(
+              entityRefs.has(relation.targetRef.toLocaleLowerCase('en-US')),
+            ).toBe(true);
+          }
+        }
+      }
+
+      it('removes stale relation targets after orphan cleanup', async () => {
+        let shouldEmitB = true;
+
+        const harness = await TestHarness.create({
+          db: await databases.init(databaseId),
+          async processEntity(
+            entity: Entity,
+            location: LocationSpec,
+            emit: CatalogProcessorEmit,
+          ) {
+            if (entity.metadata.name === 'a' && shouldEmitB) {
+              emit(processingResult.entity(location, makeComponent('b')));
+              emit(
+                processingResult.relation({
+                  source: makeComponentRef('a'),
+                  type: 'dependsOn',
+                  target: makeComponentRef('b'),
+                }),
+              );
+              emit(
+                processingResult.relation({
+                  source: makeComponentRef('b'),
+                  type: 'dependencyOf',
+                  target: makeComponentRef('a'),
+                }),
+              );
+            }
+            return entity;
+          },
+        });
+
+        await harness.setInputEntities([makeComponent('a')]);
+        await expect(harness.process()).resolves.toEqual({});
+
+        const firstOutput = await harness.getOutputEntities();
+        expect(firstOutput).toEqual(
+          expect.objectContaining({
+            'component:default/a': expect.objectContaining({
+              relations: expect.arrayContaining([
+                expect.objectContaining({
+                  type: 'dependsOn',
+                  targetRef: 'component:default/b',
+                }),
+              ]),
+            }),
+            'component:default/b': expect.objectContaining({
+              relations: expect.arrayContaining([
+                expect.objectContaining({
+                  type: 'dependencyOf',
+                  targetRef: 'component:default/a',
+                }),
+              ]),
+            }),
+          }),
+        );
+        expectNoDanglingRelations(firstOutput);
+
+        shouldEmitB = false;
+        await expect(harness.process()).resolves.toEqual({});
+        await harness.removeOrphanedEntities();
+
+        const secondOutput = await harness.getOutputEntities();
+        expect(secondOutput).toEqual({
+          'component:default/a': expect.objectContaining({
+            metadata: expect.objectContaining({ name: 'a' }),
+            relations: [],
+          }),
+        });
+        expectNoDanglingRelations(secondOutput);
+      });
+
+      it('keeps circular relations without creating dangling targets', async () => {
+        const harness = await TestHarness.create({
+          db: await databases.init(databaseId),
+          async processEntity(entity: Entity, _location, emit) {
+            if (entity.metadata.name === 'a') {
+              emit(
+                processingResult.relation({
+                  source: makeComponentRef('a'),
+                  type: 'dependsOn',
+                  target: makeComponentRef('b'),
+                }),
+              );
+            }
+            if (entity.metadata.name === 'b') {
+              emit(
+                processingResult.relation({
+                  source: makeComponentRef('b'),
+                  type: 'dependsOn',
+                  target: makeComponentRef('a'),
+                }),
+              );
+            }
+            return entity;
+          },
+        });
+
+        await harness.setInputEntities([
+          makeComponent('a'),
+          makeComponent('b'),
+        ]);
+        await expect(harness.process()).resolves.toEqual({});
+        const output = await harness.getOutputEntities();
+        expect(output['component:default/a'].relations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: 'dependsOn',
+              targetRef: 'component:default/b',
+            }),
+          ]),
+        );
+        expect(output['component:default/b'].relations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: 'dependsOn',
+              targetRef: 'component:default/a',
+            }),
+          ]),
+        );
+        expectNoDanglingRelations(output);
+      });
+
+      it('stitches the same circular relation graph in deferred mode', async () => {
+        const harness = await TestHarness.create({
+          db: await databases.init(databaseId),
+          stitchingMode: 'deferred',
+          async processEntity(entity: Entity, _location, emit) {
+            if (entity.metadata.name === 'a') {
+              emit(
+                processingResult.relation({
+                  source: makeComponentRef('a'),
+                  type: 'dependsOn',
+                  target: makeComponentRef('b'),
+                }),
+              );
+            }
+            if (entity.metadata.name === 'b') {
+              emit(
+                processingResult.relation({
+                  source: makeComponentRef('b'),
+                  type: 'dependsOn',
+                  target: makeComponentRef('a'),
+                }),
+              );
+            }
+            return entity;
+          },
+        });
+
+        await harness.setInputEntities([
+          makeComponent('a'),
+          makeComponent('b'),
+        ]);
+        await expect(harness.process()).resolves.toEqual({});
+        const refreshState = await harness.getRefreshState();
+        expect(Object.keys(refreshState)).toEqual(
+          expect.arrayContaining([
+            'component:default/a',
+            'component:default/b',
+          ]),
+        );
+        const stitchA = await harness.stitchEntity('component:default/a');
+        const stitchB = await harness.stitchEntity('component:default/b');
+        expect(stitchA).not.toBe('abandoned');
+        expect(stitchB).not.toBe('abandoned');
+
+        const output = await harness.getOutputEntities();
+        const stitchedA = Object.values(output).find(
+          entity => entity.metadata.name === 'a',
+        );
+        const stitchedB = Object.values(output).find(
+          entity => entity.metadata.name === 'b',
+        );
+        expect(stitchedA).toBeDefined();
+        expect(stitchedB).toBeDefined();
+        expect(stitchedA!.relations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: 'dependsOn',
+              targetRef: 'component:default/b',
+            }),
+          ]),
+        );
+        expect(stitchedB!.relations).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              type: 'dependsOn',
+              targetRef: 'component:default/a',
+            }),
+          ]),
+        );
+        expectNoDanglingRelations(output);
+      });
+    },
+  );
 
   it('should reject insecure URLs', async () => {
     const harness = await TestHarness.create({
