@@ -143,41 +143,52 @@ describe('SearchBar', () => {
 
   it('Updates term state when text is entered', async () => {
     jest.useFakeTimers();
+    try {
+      await renderInTestApp(
+        <TestApiProvider
+          apis={[
+            [configApiRef, configApiMock],
+            [searchApiRef, searchApiMock],
+          ]}
+        >
+          <SearchContextProvider>
+            <SearchBar />
+          </SearchContextProvider>
+        </TestApiProvider>,
+      );
 
-    await renderInTestApp(
-      <TestApiProvider
-        apis={[
-          [configApiRef, configApiMock],
-          [searchApiRef, searchApiMock],
-        ]}
-      >
-        <SearchContextProvider>
-          <SearchBar />
-        </SearchContextProvider>
-      </TestApiProvider>,
-    );
+      const textbox = screen.getByLabelText('Search');
+      const value = 'value';
+      const callsBeforeDebounce = searchApiMock.query.mock.calls.length;
 
-    const textbox = screen.getByLabelText('Search');
+      await user.type(textbox, value);
+      expect(searchApiMock.query).toHaveBeenCalledTimes(callsBeforeDebounce);
 
-    const value = 'value';
+      act(() => {
+        jest.advanceTimersByTime(199);
+      });
+      expect(searchApiMock.query).toHaveBeenCalledTimes(callsBeforeDebounce);
 
-    await user.type(textbox, value);
+      act(() => {
+        jest.advanceTimersByTime(1);
+      });
 
-    act(() => {
-      jest.advanceTimersByTime(200);
-    });
-
-    await waitFor(() => expect(textbox).toHaveValue(value));
-
-    expect(searchApiMock.query).toHaveBeenLastCalledWith(
-      expect.objectContaining({ term: value }),
-      {
-        signal: expect.any(AbortSignal),
-      },
-    );
-
-    jest.runAllTimers();
-    jest.useRealTimers();
+      await waitFor(() =>
+        expect(searchApiMock.query).toHaveBeenCalledTimes(
+          callsBeforeDebounce + 1,
+        ),
+      );
+      expect(textbox).toHaveValue(value);
+      expect(searchApiMock.query).toHaveBeenLastCalledWith(
+        expect.objectContaining({ term: value }),
+        {
+          signal: expect.any(AbortSignal),
+        },
+      );
+    } finally {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    }
   });
 
   it('Clear button clears term state', async () => {
@@ -235,52 +246,54 @@ describe('SearchBar', () => {
 
   it('Adheres to provided debounceTime', async () => {
     jest.useFakeTimers();
+    try {
+      const debounceTime = 100;
 
-    const debounceTime = 100;
+      await renderInTestApp(
+        <TestApiProvider
+          apis={[
+            [configApiRef, configApiMock],
+            [searchApiRef, searchApiMock],
+          ]}
+        >
+          <SearchContextProvider>
+            <SearchBar debounceTime={debounceTime} />
+          </SearchContextProvider>
+        </TestApiProvider>,
+      );
 
-    await renderInTestApp(
-      <TestApiProvider
-        apis={[
-          [configApiRef, configApiMock],
-          [searchApiRef, searchApiMock],
-        ]}
-      >
-        <SearchContextProvider>
-          <SearchBar debounceTime={debounceTime} />
-        </SearchContextProvider>
-      </TestApiProvider>,
-    );
+      const textbox = screen.getByLabelText('Search');
+      const value = 'value';
+      const callsBeforeDebounce = searchApiMock.query.mock.calls.length;
 
-    const textbox = screen.getByLabelText('Search');
+      await user.type(textbox, value);
+      expect(searchApiMock.query).toHaveBeenCalledTimes(callsBeforeDebounce);
 
-    const value = 'value';
+      act(() => {
+        jest.advanceTimersByTime(debounceTime - 1);
+      });
+      expect(searchApiMock.query).toHaveBeenCalledTimes(callsBeforeDebounce);
 
-    await user.type(textbox, value);
+      act(() => {
+        jest.advanceTimersByTime(1);
+      });
 
-    await waitFor(() =>
-      expect(searchApiMock.query).not.toHaveBeenLastCalledWith(
+      await waitFor(() =>
+        expect(searchApiMock.query).toHaveBeenCalledTimes(
+          callsBeforeDebounce + 1,
+        ),
+      );
+      expect(textbox).toHaveValue(value);
+      expect(searchApiMock.query).toHaveBeenLastCalledWith(
         expect.objectContaining({ term: value }),
-        expect.objectContaining({
+        {
           signal: expect.any(AbortSignal),
-        }),
-      ),
-    );
-
-    act(() => {
-      jest.advanceTimersByTime(debounceTime);
-    });
-
-    await waitFor(() => expect(textbox).toHaveValue(value));
-
-    expect(searchApiMock.query).toHaveBeenLastCalledWith(
-      expect.objectContaining({ term: value }),
-      {
-        signal: expect.any(AbortSignal),
-      },
-    );
-
-    jest.runAllTimers();
-    jest.useRealTimers();
+        },
+      );
+    } finally {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    }
   });
 
   it('Does not capture analytics event if not enabled in app', async () => {
