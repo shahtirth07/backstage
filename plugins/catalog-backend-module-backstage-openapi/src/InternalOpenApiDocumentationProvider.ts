@@ -69,7 +69,7 @@ const addTagsToSpec = (spec: OpenAPIObject, tag: string) => {
   });
 };
 
-const mergeSpecs = async ({
+export const mergeSpecs = async ({
   baseUrl,
   specs,
 }: {
@@ -155,7 +155,7 @@ const loadSpecs = async ({
   return mergeSpecs({ baseUrl, specs });
 };
 
-const formatDefinition = (
+export const formatDefinition = (
   definition: any,
   format: string | 'json' | 'yaml',
 ) => {
