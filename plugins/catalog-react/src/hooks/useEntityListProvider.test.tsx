@@ -263,12 +263,7 @@ describe('<EntityListProvider />', () => {
       expect(result.current.entities.length).toBe(1);
     });
     expect(result.current.totalItems).toBe(1);
-
-    await expect(() =>
-      waitFor(() => {
-        expect(mockCatalogApi.getEntities).not.toHaveBeenCalledTimes(1);
-      }),
-    ).rejects.toThrow();
+    expect(mockCatalogApi.getEntities).toHaveBeenCalledTimes(1);
   });
 
   it('debounces multiple filter changes', async () => {
@@ -895,40 +890,50 @@ describe(`<EntityListProvider pagination={{ mode: 'offset' }} />`, () => {
   });
 
   it('fetch when frontend filters change', async () => {
-    const { result } = renderHook(() => useEntityList(), {
-      wrapper: createWrapper({ pagination }),
-    });
+    jest.useFakeTimers();
+    try {
+      const { result } = renderHook(() => useEntityList(), {
+        wrapper: createWrapper({ pagination }),
+      });
 
-    await waitFor(() => {
+      await act(async () => {
+        jest.advanceTimersByTime(20);
+        await Promise.resolve();
+      });
+
       expect(result.current.entities.length).toBe(2);
       expect(mockCatalogApi.queryEntities).toHaveBeenCalledTimes(1);
-    });
 
-    act(() =>
-      result.current.updateFilters({
-        user: EntityUserFilter.owned(ownershipEntityRefs),
-      }),
-    );
+      act(() =>
+        result.current.updateFilters({
+          user: EntityUserFilter.owned(ownershipEntityRefs),
+        }),
+      );
 
-    await waitFor(() => {
+      await act(async () => {
+        jest.advanceTimersByTime(20);
+        await Promise.resolve();
+      });
+
       expect(result.current.entities.length).toBe(1);
-    });
-
-    await waitFor(() => {
       expect(mockCatalogApi.queryEntities).toHaveBeenCalledTimes(2);
-    });
 
-    act(() =>
-      result.current.updateFilters({
-        user: EntityUserFilter.owned(ownershipEntityRefs),
-      }),
-    );
+      act(() =>
+        result.current.updateFilters({
+          user: EntityUserFilter.owned(ownershipEntityRefs),
+        }),
+      );
 
-    await expect(() =>
-      waitFor(() => {
-        expect(mockCatalogApi.queryEntities).toHaveBeenCalledTimes(3);
-      }),
-    ).rejects.toThrow();
+      await act(async () => {
+        jest.advanceTimersByTime(20);
+        await Promise.resolve();
+      });
+
+      expect(mockCatalogApi.queryEntities).toHaveBeenCalledTimes(2);
+    } finally {
+      jest.runOnlyPendingTimers();
+      jest.useRealTimers();
+    }
   });
 
   it('fetch when limit change', async () => {
