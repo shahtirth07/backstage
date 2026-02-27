@@ -239,6 +239,44 @@ it'll take into account when present.
 - `BACKSTAGE_TEST_DATABASE_POSTGRES13_CONNECTION_STRING`
 - `BACKSTAGE_TEST_DATABASE_MYSQL8_CONNECTION_STRING`
 
+To skip Docker-backed databases entirely (for example in local development), set
+`BACKSTAGE_TEST_DISABLE_DOCKER=1`. In that mode, tests fall back to non-Docker
+database targets such as SQLite. This is useful when you only want fast local
+feedback and don't have a container runtime available.
+
+```sh
+BACKSTAGE_TEST_DISABLE_DOCKER=1 yarn test --no-watch plugins/my-plugin-backend/src
+```
+
+### Example plugin pattern
+
+A practical plugin pattern is to combine `TestDatabases` with `startTestBackend`
+in backend router/service tests. This lets the same test harness run against
+multiple database engines in CI while still remaining fast locally.
+
+```ts
+// Example pattern used in backend plugins such as auth-backend router tests
+import {
+  startTestBackend,
+  TestDatabases,
+  mockServices,
+} from '@backstage/backend-test-utils';
+
+const databases = TestDatabases.create();
+
+describe.each(databases.eachSupportedId())('%p', databaseId => {
+  it('runs plugin behavior against a real test database', async () => {
+    const knex = await databases.init(databaseId);
+
+    const { server } = await startTestBackend({
+      features: [myPlugin(), mockServices.database.factory({ knex })],
+    });
+
+    // exercise the plugin through HTTP calls or service methods
+  });
+});
+```
+
 ## Testing Service Factories
 
 To facilitate testing of service factories, the `@backstage/backend-test-utils`

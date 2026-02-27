@@ -12,6 +12,30 @@ cd plugins/my-plugin-backend
 yarn add --dev @backstage/backend-test-utils
 ```
 
+## TestDatabases quick usage
+
+`TestDatabases` helps run the same integration test logic against one or more
+database engines.
+
+```ts
+import { TestDatabases } from '@backstage/backend-test-utils';
+
+describe('my plugin', () => {
+  const databases = TestDatabases.create();
+
+  it.each(databases.eachSupportedId())('works on %p', async databaseId => {
+    const knex = await databases.init(databaseId);
+    // run migrations, then execute assertions against your service/router
+  });
+});
+```
+
+For fast local iteration, disable Docker-backed database targets:
+
+```sh
+BACKSTAGE_TEST_DISABLE_DOCKER=1 yarn test --no-watch plugins/my-plugin-backend/src
+```
+
 ## Environment variables
 
 - `BACKSTAGE_TEST_DISABLE_DOCKER`
