@@ -20,7 +20,10 @@ import { createBackendPlugin } from '@backstage/backend-plugin-api';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolResultSchema,
+  ListToolsResultSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 
 describe('Mcp Backend', () => {
   const mockPluginWithActions = createBackendPlugin({
@@ -161,5 +164,36 @@ describe('Mcp Backend', () => {
         name: 'make-greeting',
       },
     ]);
+  });
+
+  it('should execute a registered action via tools/call', async () => {
+    const { client, serverAddress } = await getContext();
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`${serverAddress}/api/mcp-actions/v1`),
+    );
+
+    await client.connect(transport);
+
+    const result = await client.request(
+      {
+        method: 'tools/call',
+        params: {
+          name: 'make-greeting',
+          arguments: { name: 'World' },
+        },
+      },
+      CallToolResultSchema,
+    );
+
+    await client.close();
+
+    const firstContent = result.content[0];
+    expect(firstContent.type).toBe('text');
+    expect('text' in firstContent && firstContent.text).toContain(
+      'NotAllowedError',
+    );
+    expect('text' in firstContent && firstContent.text).toContain(
+      'Actions must be invoked by a service, not a user',
+    );
   });
 });
