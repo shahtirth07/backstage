@@ -318,6 +318,51 @@ describe('OidcRouter', () => {
         );
       });
 
+      it('should preserve state when authorization request fails', async () => {
+        const { router } = await createRouter(databaseId);
+        const state = 'test-state-oidc-123';
+
+        const { server } = await startTestBackend({
+          features: [
+            createBackendPlugin({
+              pluginId: 'auth',
+              register(reg) {
+                reg.registerInit({
+                  deps: { httpRouter: coreServices.httpRouter },
+                  async init({ httpRouter }) {
+                    httpRouter.use(router.getRouter());
+                    httpRouter.addAuthPolicy({
+                      path: '/',
+                      allow: 'unauthenticated',
+                    });
+                  },
+                });
+              },
+            }),
+          ],
+        });
+
+        const response = await request(server)
+          .get('/api/auth/v1/authorize')
+          .query({
+            client_id: 'missing-client',
+            redirect_uri: 'https://example.com/callback',
+            response_type: 'code',
+            scope: 'openid',
+            state,
+          })
+          .expect(302);
+
+        const redirectUrl = new URL(response.header.location);
+        expect(redirectUrl.origin).toBe('https://example.com');
+        expect(redirectUrl.pathname).toBe('/callback');
+        expect(redirectUrl.searchParams.get('error')).toBe('InputError');
+        expect(redirectUrl.searchParams.get('error_description')).toBe(
+          'Invalid client_id',
+        );
+        expect(redirectUrl.searchParams.get('state')).toBe(state);
+      });
+
       it('should get auth session details', async () => {
         const {
           mocks: { service },
@@ -708,6 +753,127 @@ describe('OidcRouter', () => {
           error: 'invalid_client',
           error_description: 'Invalid authorization code',
         });
+      });
+
+      it('should reject refresh token grant type at token endpoint', async () => {
+        const { router } = await createRouter(databaseId);
+
+        const { server } = await startTestBackend({
+          features: [
+            createBackendPlugin({
+              pluginId: 'auth',
+              register(reg) {
+                reg.registerInit({
+                  deps: { httpRouter: coreServices.httpRouter },
+                  async init({ httpRouter }) {
+                    httpRouter.use(router.getRouter());
+                    httpRouter.addAuthPolicy({
+                      path: '/',
+                      allow: 'unauthenticated',
+                    });
+                  },
+                });
+              },
+            }),
+          ],
+        });
+
+        const tokenResponse = await request(server)
+          .post('/api/auth/v1/token')
+          .send({
+            grant_type: 'refresh_token',
+            code: 'unused-code',
+            redirect_uri: 'https://example.com/callback',
+          })
+          .expect(400);
+
+        expect(tokenResponse.body).toEqual({
+          error: 'invalid_request',
+          error_description: 'Unsupported grant type',
+        });
+      });
+
+      it('should reject token exchange with expired authorization code', async () => {
+        const {
+          mocks: { auth, service, tokenIssuer, httpAuth, oidc },
+          router,
+        } = await createRouter(databaseId);
+
+        tokenIssuer.issueToken.mockResolvedValue({
+          token: 'mock-access-token-expired-code',
+        });
+
+        httpAuth.credentials.mockResolvedValueOnce(
+          mockCredentials.user('user:default/test-user-expired-code'),
+        );
+
+        auth.isPrincipal.mockReturnValueOnce(true);
+
+        const client = await service.registerClient({
+          clientName: 'Test Client',
+          redirectUris: ['https://example.com/callback'],
+          responseTypes: ['code'],
+          grantTypes: ['authorization_code'],
+          scope: 'openid',
+        });
+
+        const authSession = await service.createAuthorizationSession({
+          clientId: client.clientId,
+          redirectUri: 'https://example.com/callback',
+          responseType: 'code',
+          scope: 'openid',
+          state: 'test-state',
+        });
+
+        const { server } = await startTestBackend({
+          features: [
+            createBackendPlugin({
+              pluginId: 'auth',
+              register(reg) {
+                reg.registerInit({
+                  deps: { httpRouter: coreServices.httpRouter },
+                  async init({ httpRouter }) {
+                    httpRouter.use(router.getRouter());
+                    httpRouter.addAuthPolicy({
+                      path: '/',
+                      allow: 'unauthenticated',
+                    });
+                  },
+                });
+              },
+            }),
+          ],
+        });
+
+        const approvalResponse = await request(server)
+          .post(`/api/auth/v1/sessions/${authSession.id}/approve`)
+          .set('Authorization', `Bearer ${MOCK_USER_TOKEN}`)
+          .expect(200);
+
+        const redirectUrl = new URL(approvalResponse.body.redirectUrl);
+        const authorizationCode = redirectUrl.searchParams.get('code');
+
+        expect(authorizationCode).toBeDefined();
+
+        await oidc.updateAuthorizationCode({
+          code: authorizationCode!,
+          expiresAt: new Date(Date.now() - 60_000),
+        });
+
+        const tokenResponse = await request(server)
+          .post('/api/auth/v1/token')
+          .send({
+            grant_type: 'authorization_code',
+            code: authorizationCode,
+            redirect_uri: 'https://example.com/callback',
+          })
+          .expect(401);
+
+        expect(tokenResponse.body).toEqual({
+          error: 'invalid_client',
+          error_description: 'Authorization code expired',
+        });
+        expect(tokenIssuer.issueToken).not.toHaveBeenCalled();
       });
 
       it('should exchange authorization code for tokens with PKCE S256', async () => {
