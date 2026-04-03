@@ -18,6 +18,7 @@ import { Router } from 'express';
 import { McpService } from '../services/McpService';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { HttpAuthService } from '@backstage/backend-plugin-api';
+import { SseSessionStore } from './SseSessionStore';
 
 /**
  * Legacy SSE endpoint for older clients, hopefully will not be needed for much longer.
@@ -30,7 +31,7 @@ export const createSseRouter = ({
   httpAuth: HttpAuthService;
 }): Router => {
   const router = PromiseRouter();
-  const transportsToSessionId = new Map<string, SSEServerTransport>();
+  const sessionStore = new SseSessionStore();
 
   router.get('/', async (req, res) => {
     const server = mcpService.getServer({
@@ -42,11 +43,7 @@ export const createSseRouter = ({
       res,
     );
 
-    transportsToSessionId.set(transport.sessionId, transport);
-
-    res.on('close', () => {
-      transportsToSessionId.delete(transport.sessionId);
-    });
+    sessionStore.register(transport, res);
 
     await server.connect(transport);
   });
@@ -59,7 +56,7 @@ export const createSseRouter = ({
       return;
     }
 
-    const transport = transportsToSessionId.get(sessionId);
+    const transport = sessionStore.find(sessionId);
     if (transport) {
       await transport.handlePostMessage(req, res, req.body);
     } else {
