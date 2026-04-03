@@ -26,6 +26,31 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 describe('Mcp Backend', () => {
+  const expectedMakeGreetingTools = [
+    {
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+        readOnlyHint: false,
+        title: 'Make Greeting',
+      },
+      description: 'Make a greeting',
+      inputSchema: {
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        additionalProperties: false,
+        properties: {
+          name: {
+            type: 'string',
+          },
+        },
+        required: ['name'],
+        type: 'object',
+      },
+      name: 'make-greeting',
+    },
+  ];
+
   const mockPluginWithActions = createBackendPlugin({
     pluginId: 'local',
     register({ registerInit }) {
@@ -49,22 +74,25 @@ describe('Mcp Backend', () => {
     },
   });
 
-  const getContext = async () => {
-    const { server } = await startTestBackend({
+  const mcpTestRootConfigData = {
+    backend: {
+      actions: {
+        pluginSources: ['local'],
+      },
+    },
+  };
+
+  const startMcpTestBackend = (configData: typeof mcpTestRootConfigData) =>
+    startTestBackend({
       features: [
         mcpPlugin,
         mockPluginWithActions,
-        mockServices.rootConfig.factory({
-          data: {
-            backend: {
-              actions: {
-                pluginSources: ['local'],
-              },
-            },
-          },
-        }),
+        mockServices.rootConfig.factory({ data: configData }),
       ],
     });
+
+  const getContext = async () => {
+    const { server } = await startMcpTestBackend(mcpTestRootConfigData);
 
     const client = new Client({
       name: 'test client',
@@ -97,30 +125,7 @@ describe('Mcp Backend', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual(expectedMakeGreetingTools);
   });
 
   it('should support sse spec', async () => {
@@ -140,30 +145,7 @@ describe('Mcp Backend', () => {
 
     await client.close();
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual(expectedMakeGreetingTools);
   });
 
   it('should execute a registered action via tools/call', async () => {
@@ -217,25 +199,13 @@ describe('Mcp Backend', () => {
       });
 
     try {
-      const { server } = await startTestBackend({
-        features: [
-          mcpPlugin,
-          mockPluginWithActions,
-          mockServices.rootConfig.factory({
-            data: {
-              backend: {
-                actions: {
-                  pluginSources: ['local'],
-                },
-              },
-              auth: {
-                experimentalDynamicClientRegistration: {
-                  enabled: true,
-                },
-              },
-            },
-          }),
-        ],
+      const { server } = await startMcpTestBackend({
+        ...mcpTestRootConfigData,
+        auth: {
+          experimentalDynamicClientRegistration: {
+            enabled: true,
+          },
+        },
       });
 
       const address = server.address();
