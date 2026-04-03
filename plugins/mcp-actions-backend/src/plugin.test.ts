@@ -24,12 +24,83 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Server } from 'node:http';
+
+const EXPECTED_MAKE_GREETING_TOOLS = [
+  {
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+      readOnlyHint: false,
+      title: 'Make Greeting',
+    },
+    description: 'Make a greeting',
+    inputSchema: {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      additionalProperties: false,
+      properties: {
+        name: {
+          type: 'string',
+        },
+      },
+      required: ['name'],
+      type: 'object',
+    },
+    name: 'make-greeting',
+  },
+] as const;
+
+const MCP_TEST_ROOT_CONFIG = {
+  backend: {
+    actions: {
+      pluginSources: ['local'],
+    },
+  },
+} as const;
+
+function readServerPort(server: Server): number {
+  const address = server.address();
+  if (typeof address !== 'object' || address === null || !('port' in address)) {
+    throw new Error('server broke');
+  }
+  return address.port;
+}
+
+/** Sonar: prefer globalThis over global for fetch patching. */
+function installOpenIdConfigurationFetchMock(
+  openIdDocument: Record<string, string>,
+): jest.SpyInstance {
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  return jest
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/.well-known/openid-configuration')) {
+        return {
+          ok: true,
+          json: async () => openIdDocument,
+        } as Response;
+      }
+      return originalFetch(input, init);
+    });
+}
+
+function expectOpenIdConfigurationFetch(fetchMock: jest.SpyInstance) {
+  expect(
+    fetchMock.mock.calls.some(([input]) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      return url.includes('/.well-known/openid-configuration');
+    }),
+  ).toBe(true);
+}
 
 describe('Mcp Backend', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.restoreAllMocks();
   });
 
   const mockPluginWithActions = createBackendPlugin({
@@ -55,36 +126,30 @@ describe('Mcp Backend', () => {
     },
   });
 
-  const getContext = async () => {
-    const { server } = await startTestBackend({
+  const startMcpTestBackend = (
+    configData: typeof MCP_TEST_ROOT_CONFIG & {
+      auth?: { experimentalDynamicClientRegistration: { enabled: boolean } };
+    },
+  ) =>
+    startTestBackend({
       features: [
         mcpPlugin,
         mockPluginWithActions,
-        mockServices.rootConfig.factory({
-          data: {
-            backend: {
-              actions: {
-                pluginSources: ['local'],
-              },
-            },
-          },
-        }),
+        mockServices.rootConfig.factory({ data: configData }),
       ],
     });
+
+  const getContext = async () => {
+    const { server } = await startMcpTestBackend(MCP_TEST_ROOT_CONFIG);
 
     const client = new Client({
       name: 'test client',
       version: '1.0',
     });
 
-    const address = server.address();
-    if (typeof address !== 'object' || !('port' in address!)) {
-      throw new Error('server broke');
-    }
-
     return {
       client,
-      serverAddress: `http://localhost:${address.port}`,
+      serverAddress: `http://localhost:${readServerPort(server)}`,
     };
   };
 
@@ -103,30 +168,7 @@ describe('Mcp Backend', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual(EXPECTED_MAKE_GREETING_TOOLS);
   });
 
   it('should support sse spec', async () => {
@@ -146,30 +188,7 @@ describe('Mcp Backend', () => {
 
     await client.close();
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual(EXPECTED_MAKE_GREETING_TOOLS);
   });
 
   it('should execute a registered action via tools/call', async () => {
@@ -203,97 +222,78 @@ describe('Mcp Backend', () => {
     );
   });
 
-  it('should proxy OIDC discovery response for dynamic client registration', async () => {
-    const oidcDocument = {
-      issuer: 'https://issuer.example.com',
-      authorization_endpoint: 'https://issuer.example.com/authorize',
-      token_endpoint: 'https://issuer.example.com/token',
+  it('registers /.well-known/oauth-authorization-server when dynamic client registration is enabled', async () => {
+    const openIdDocument = {
+      issuer: 'http://mock-issuer',
+      authorization_endpoint: 'http://mock-issuer/auth',
     };
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      json: jest.fn().mockResolvedValue(oidcDocument),
-    });
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const fetchMock = installOpenIdConfigurationFetchMock(openIdDocument);
 
-    const backend = await startTestBackend({
-      features: [
-        mcpPlugin,
-        mockPluginWithActions,
-        mockServices.rootConfig.factory({
-          data: {
-            backend: {
-              actions: {
-                pluginSources: ['local'],
-              },
-            },
-            auth: {
-              experimentalDynamicClientRegistration: {
-                enabled: true,
-              },
-            },
-          },
-        }),
-      ],
+    const backend = await startMcpTestBackend({
+      ...MCP_TEST_ROOT_CONFIG,
+      auth: {
+        experimentalDynamicClientRegistration: {
+          enabled: true,
+        },
+      },
     });
 
     try {
-      const response = await originalFetch(
-        `http://localhost:${backend.server.port()}/.well-known/oauth-authorization-server`,
+      const res = await fetch(
+        `http://localhost:${readServerPort(
+          backend.server,
+        )}/.well-known/oauth-authorization-server`,
       );
 
-      expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual(oidcDocument);
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/.well-known/openid-configuration'),
-      );
+      expect(res.ok).toBe(true);
+      await expect(res.json()).resolves.toEqual(openIdDocument);
+      expectOpenIdConfigurationFetch(fetchMock);
     } finally {
       await backend.stop();
+      fetchMock.mockRestore();
     }
   });
 
   it('should return 502 when OIDC discovery fetch fails', async () => {
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: 'Internal Server Error',
-    });
-    global.fetch = fetchMock as unknown as typeof fetch;
+    const originalFetchImpl = globalThis.fetch.bind(globalThis);
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/.well-known/openid-configuration')) {
+          return {
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+          } as Response;
+        }
+        return originalFetchImpl(input, init);
+      });
 
-    const backend = await startTestBackend({
-      features: [
-        mcpPlugin,
-        mockPluginWithActions,
-        mockServices.rootConfig.factory({
-          data: {
-            backend: {
-              actions: {
-                pluginSources: ['local'],
-              },
-            },
-            auth: {
-              experimentalDynamicClientRegistration: {
-                enabled: true,
-              },
-            },
-          },
-        }),
-      ],
+    const backend = await startMcpTestBackend({
+      ...MCP_TEST_ROOT_CONFIG,
+      auth: {
+        experimentalDynamicClientRegistration: {
+          enabled: true,
+        },
+      },
     });
 
     try {
-      const response = await originalFetch(
-        `http://localhost:${backend.server.port()}/.well-known/oauth-authorization-server`,
+      const response = await fetch(
+        `http://localhost:${readServerPort(
+          backend.server,
+        )}/.well-known/oauth-authorization-server`,
       );
 
       expect(response.status).toBe(502);
       await expect(response.json()).resolves.toEqual({
         error: 'Failed to load OIDC discovery document from auth service',
       });
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/.well-known/openid-configuration'),
-      );
+      expectOpenIdConfigurationFetch(fetchMock);
     } finally {
       await backend.stop();
+      fetchMock.mockRestore();
     }
   });
 });
