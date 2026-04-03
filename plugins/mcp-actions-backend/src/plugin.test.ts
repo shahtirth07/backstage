@@ -242,4 +242,3 @@ describe('Mcp Backend', () => {
     }
   });
 });
-EOF && git add plugins/mcp-actions-backend/src/plugin.test.ts && GIT_EDITOR=true git rebase --continue
