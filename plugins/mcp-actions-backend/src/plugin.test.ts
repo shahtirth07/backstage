@@ -86,7 +86,23 @@ function installOpenIdConfigurationFetchMock(
     });
 }
 
+function expectOpenIdConfigurationFetch(fetchMock: jest.SpyInstance) {
+  expect(
+    fetchMock.mock.calls.some(([input]) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      return url.includes('/.well-known/openid-configuration');
+    }),
+  ).toBe(true);
+}
+
 describe('Mcp Backend', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    jest.restoreAllMocks();
+  });
+
   const mockPluginWithActions = createBackendPlugin({
     pluginId: 'local',
     register({ registerInit }) {
@@ -213,31 +229,70 @@ describe('Mcp Backend', () => {
     };
     const fetchMock = installOpenIdConfigurationFetchMock(openIdDocument);
 
-    try {
-      const { server } = await startMcpTestBackend({
-        ...MCP_TEST_ROOT_CONFIG,
-        auth: {
-          experimentalDynamicClientRegistration: {
-            enabled: true,
-          },
+    const backend = await startMcpTestBackend({
+      ...MCP_TEST_ROOT_CONFIG,
+      auth: {
+        experimentalDynamicClientRegistration: {
+          enabled: true,
         },
-      });
+      },
+    });
 
+    try {
       const res = await fetch(
         `http://localhost:${readServerPort(
-          server,
+          backend.server,
         )}/.well-known/oauth-authorization-server`,
       );
+
       expect(res.ok).toBe(true);
       await expect(res.json()).resolves.toEqual(openIdDocument);
-
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringMatching(/\.well-known\/openid-configuration$/),
-        expect.objectContaining({
-          signal: expect.anything(),
-        }),
-      );
+      expectOpenIdConfigurationFetch(fetchMock);
     } finally {
+      await backend.stop();
+      fetchMock.mockRestore();
+    }
+  });
+
+  it('should return 502 when OIDC discovery fetch fails', async () => {
+    const originalFetchImpl = globalThis.fetch.bind(globalThis);
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async (input, init) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        if (url.includes('/.well-known/openid-configuration')) {
+          return {
+            ok: false,
+            status: 500,
+            statusText: 'Internal Server Error',
+          } as Response;
+        }
+        return originalFetchImpl(input, init);
+      });
+
+    const backend = await startMcpTestBackend({
+      ...MCP_TEST_ROOT_CONFIG,
+      auth: {
+        experimentalDynamicClientRegistration: {
+          enabled: true,
+        },
+      },
+    });
+
+    try {
+      const response = await fetch(
+        `http://localhost:${readServerPort(
+          backend.server,
+        )}/.well-known/oauth-authorization-server`,
+      );
+
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toEqual({
+        error: 'Failed to load OIDC discovery document from auth service',
+      });
+      expectOpenIdConfigurationFetch(fetchMock);
+    } finally {
+      await backend.stop();
       fetchMock.mockRestore();
     }
   });

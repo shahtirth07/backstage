@@ -91,8 +91,9 @@ function registerOidcDiscoveryRouteIfEnabled(options: {
   config: RootConfigService;
   rootRouter: RootHttpRouterService;
   discovery: DiscoveryService;
+  logger: LoggerService;
 }) {
-  const { config, rootRouter, discovery } = options;
+  const { config, rootRouter, discovery, logger } = options;
 
   if (
     !config.getOptionalBoolean(
@@ -106,12 +107,17 @@ function registerOidcDiscoveryRouteIfEnabled(options: {
   // many of the MCP client as of yet. So this seems to be the oldest version of the spec thats implemented.
   const oidcDiscoveryErrorMessage =
     'Failed to load OIDC discovery document from auth service';
+
   rootRouter.use('/.well-known/oauth-authorization-server', async (_, res) => {
     try {
       const authBaseUrlRaw = await discovery.getBaseUrl('auth');
       const authBaseUrl = toSafeHttpUrl(authBaseUrlRaw);
 
       if (!authBaseUrl) {
+        logger.error(oidcDiscoveryErrorMessage, {
+          authBaseUrl: authBaseUrlRaw,
+          reason: 'Invalid auth base URL protocol',
+        });
         res.status(502).json({ error: oidcDiscoveryErrorMessage });
         return;
       }
@@ -127,12 +133,20 @@ function registerOidcDiscoveryRouteIfEnabled(options: {
       );
 
       if (!oidcResponse.ok) {
+        logger.error(oidcDiscoveryErrorMessage, {
+          status: oidcResponse.status,
+          statusText: oidcResponse.statusText,
+        });
         res.status(502).json({ error: oidcDiscoveryErrorMessage });
         return;
       }
 
       res.json(await oidcResponse.json());
-    } catch {
+    } catch (error) {
+      logger.error(
+        oidcDiscoveryErrorMessage,
+        error instanceof Error ? error : { message: String(error) },
+      );
       res.status(502).json({ error: oidcDiscoveryErrorMessage });
     }
   });
@@ -182,6 +196,7 @@ export const mcpPlugin = createBackendPlugin({
           config,
           rootRouter,
           discovery,
+          logger,
         });
       },
     });
