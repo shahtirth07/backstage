@@ -18,6 +18,7 @@ import { Router } from 'express';
 import { McpService } from '../services/McpService';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { HttpAuthService } from '@backstage/backend-plugin-api';
+import { SseSessionStore } from './SseSessionStore';
 import { sendPlainTextClientError } from './mcpHttpErrorResponses';
 import { parseSessionIdQueryParam } from './parseSessionIdQueryParam';
 
@@ -32,7 +33,7 @@ export const createSseRouter = ({
   httpAuth: HttpAuthService;
 }): Router => {
   const router = PromiseRouter();
-  const transportsToSessionId = new Map<string, SSEServerTransport>();
+  const sessionStore = new SseSessionStore();
 
   router.get('/', async (req, res) => {
     const server = mcpService.getServer({
@@ -44,11 +45,7 @@ export const createSseRouter = ({
       res,
     );
 
-    transportsToSessionId.set(transport.sessionId, transport);
-
-    res.on('close', () => {
-      transportsToSessionId.delete(transport.sessionId);
-    });
+    sessionStore.register(transport, res);
 
     await server.connect(transport);
   });
@@ -61,7 +58,7 @@ export const createSseRouter = ({
     }
 
     const { sessionId } = parsed;
-    const transport = transportsToSessionId.get(sessionId);
+    const transport = sessionStore.find(sessionId);
     if (transport) {
       await transport.handlePostMessage(req, res, req.body);
     } else {
