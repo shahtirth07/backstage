@@ -26,6 +26,39 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Server } from 'node:http';
 
+const EXPECTED_MAKE_GREETING_TOOLS = [
+  {
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false,
+      readOnlyHint: false,
+      title: 'Make Greeting',
+    },
+    description: 'Make a greeting',
+    inputSchema: {
+      $schema: 'http://json-schema.org/draft-07/schema#',
+      additionalProperties: false,
+      properties: {
+        name: {
+          type: 'string',
+        },
+      },
+      required: ['name'],
+      type: 'object',
+    },
+    name: 'make-greeting',
+  },
+] as const;
+
+const MCP_TEST_ROOT_CONFIG = {
+  backend: {
+    actions: {
+      pluginSources: ['local'],
+    },
+  },
+} as const;
+
 function readServerPort(server: Server): number {
   const address = server.address();
   if (typeof address !== 'object' || address === null || !('port' in address)) {
@@ -34,32 +67,26 @@ function readServerPort(server: Server): number {
   return address.port;
 }
 
-describe('Mcp Backend', () => {
-  const expectedMakeGreetingTools = [
-    {
-      annotations: {
-        destructiveHint: true,
-        idempotentHint: false,
-        openWorldHint: false,
-        readOnlyHint: false,
-        title: 'Make Greeting',
-      },
-      description: 'Make a greeting',
-      inputSchema: {
-        $schema: 'http://json-schema.org/draft-07/schema#',
-        additionalProperties: false,
-        properties: {
-          name: {
-            type: 'string',
-          },
-        },
-        required: ['name'],
-        type: 'object',
-      },
-      name: 'make-greeting',
-    },
-  ];
+/** Sonar: prefer globalThis over global for fetch patching. */
+function installOpenIdConfigurationFetchMock(
+  openIdDocument: Record<string, string>,
+): jest.SpyInstance {
+  const originalFetch = globalThis.fetch.bind(globalThis);
+  return jest
+    .spyOn(globalThis, 'fetch')
+    .mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url.includes('/.well-known/openid-configuration')) {
+        return {
+          ok: true,
+          json: async () => openIdDocument,
+        } as Response;
+      }
+      return originalFetch(input, init);
+    });
+}
 
+describe('Mcp Backend', () => {
   const mockPluginWithActions = createBackendPlugin({
     pluginId: 'local',
     register({ registerInit }) {
@@ -83,15 +110,11 @@ describe('Mcp Backend', () => {
     },
   });
 
-  const mcpTestRootConfigData = {
-    backend: {
-      actions: {
-        pluginSources: ['local'],
-      },
+  const startMcpTestBackend = (
+    configData: typeof MCP_TEST_ROOT_CONFIG & {
+      auth?: { experimentalDynamicClientRegistration: { enabled: boolean } };
     },
-  };
-
-  const startMcpTestBackend = (configData: typeof mcpTestRootConfigData) =>
+  ) =>
     startTestBackend({
       features: [
         mcpPlugin,
@@ -101,7 +124,7 @@ describe('Mcp Backend', () => {
     });
 
   const getContext = async () => {
-    const { server } = await startMcpTestBackend(mcpTestRootConfigData);
+    const { server } = await startMcpTestBackend(MCP_TEST_ROOT_CONFIG);
 
     const client = new Client({
       name: 'test client',
@@ -129,7 +152,7 @@ describe('Mcp Backend', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual(expectedMakeGreetingTools);
+    expect(result.tools).toEqual(EXPECTED_MAKE_GREETING_TOOLS);
   });
 
   it('should support sse spec', async () => {
@@ -149,7 +172,7 @@ describe('Mcp Backend', () => {
 
     await client.close();
 
-    expect(result.tools).toEqual(expectedMakeGreetingTools);
+    expect(result.tools).toEqual(EXPECTED_MAKE_GREETING_TOOLS);
   });
 
   it('should execute a registered action via tools/call', async () => {
@@ -188,23 +211,11 @@ describe('Mcp Backend', () => {
       issuer: 'http://mock-issuer',
       authorization_endpoint: 'http://mock-issuer/auth',
     };
-    const originalFetch = globalThis.fetch.bind(globalThis);
-    const fetchMock = jest
-      .spyOn(globalThis, 'fetch')
-      .mockImplementation(async (input, init) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        if (url.includes('/.well-known/openid-configuration')) {
-          return {
-            ok: true,
-            json: async () => openIdDocument,
-          } as Response;
-        }
-        return originalFetch(input, init);
-      });
+    const fetchMock = installOpenIdConfigurationFetchMock(openIdDocument);
 
     try {
       const { server } = await startMcpTestBackend({
-        ...mcpTestRootConfigData,
+        ...MCP_TEST_ROOT_CONFIG,
         auth: {
           experimentalDynamicClientRegistration: {
             enabled: true,
@@ -222,9 +233,13 @@ describe('Mcp Backend', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringMatching(/\.well-known\/openid-configuration$/),
+        expect.objectContaining({
+          signal: expect.anything(),
+        }),
       );
     } finally {
       fetchMock.mockRestore();
     }
   });
 });
+EOF && git add plugins/mcp-actions-backend/src/plugin.test.ts && GIT_EDITOR=true git rebase --continue
