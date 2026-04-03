@@ -196,4 +196,33 @@ describe('Mcp Backend', () => {
       'Actions must be invoked by a service, not a user',
     );
   });
+
+  it('returns identical 405 JSON-RPC response for GET and DELETE', async () => {
+    const { serverAddress } = await getContext();
+
+    const getResponse = await fetch(`${serverAddress}/api/mcp-actions/v1`, {
+      method: 'GET',
+    });
+    const deleteResponse = await fetch(`${serverAddress}/api/mcp-actions/v1`, {
+      method: 'DELETE',
+    });
+
+    expect(getResponse.status).toBe(405);
+    expect(deleteResponse.status).toBe(405);
+
+    const getBody = await getResponse.json();
+    const deleteBody = await deleteResponse.json();
+    const expectedBody = {
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Method not allowed.',
+      },
+      id: null,
+    };
+
+    expect(getBody).toEqual(expectedBody);
+    expect(deleteBody).toEqual(expectedBody);
+    expect(deleteBody).toEqual(getBody);
+  });
 });

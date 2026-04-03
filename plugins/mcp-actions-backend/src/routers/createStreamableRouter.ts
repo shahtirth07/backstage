@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 import PromiseRouter from 'express-promise-router';
-import { Router } from 'express';
+import { Response, Router } from 'express';
 import { McpService } from '../services/McpService';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
@@ -30,6 +30,18 @@ export const createStreamableRouter = ({
   httpAuth: HttpAuthService;
 }): Router => {
   const router = PromiseRouter();
+  const methodNotAllowedBody = {
+    jsonrpc: '2.0',
+    error: {
+      code: -32000,
+      message: 'Method not allowed.',
+    },
+    id: null,
+  };
+
+  function sendMethodNotAllowed(res: Response) {
+    res.writeHead(405).end(JSON.stringify(methodNotAllowedBody));
+  }
 
   router.post('/', async (req, res) => {
     try {
@@ -70,30 +82,12 @@ export const createStreamableRouter = ({
 
   router.get('/', async (_, res) => {
     // We only support POST requests, so we return a 405 error for all other methods.
-    res.writeHead(405).end(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Method not allowed.',
-        },
-        id: null,
-      }),
-    );
+    sendMethodNotAllowed(res);
   });
 
   router.delete('/', async (_, res) => {
     // We only support POST requests, so we return a 405 error for all other methods.
-    res.writeHead(405).end(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        error: {
-          code: -32000,
-          message: 'Method not allowed.',
-        },
-        id: null,
-      }),
-    );
+    sendMethodNotAllowed(res);
   });
 
   return router;
