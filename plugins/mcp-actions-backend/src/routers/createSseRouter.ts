@@ -59,8 +59,8 @@ export const createSseRouter = ({
       sendPlainTextClientError(res, 400, parsed.message);
       return;
     }
-    const { sessionId } = parsed;
 
+    const { sessionId } = parsed;
     const transport = transportsToSessionId.get(sessionId);
     if (transport) {
       await transport.handlePostMessage(req, res, req.body);
@@ -72,5 +72,6 @@ export const createSseRouter = ({
       );
     }
   });
+
   return router;
 };
