@@ -33,6 +33,32 @@ import {
   actionsServiceRef,
 } from '@backstage/backend-plugin-api/alpha';
 
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+function toSafeHttpUrl(urlRaw: string): URL | undefined {
+  try {
+    const url = new URL(urlRaw);
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url;
+    }
+  } catch {
+    // Intentionally ignore: returning undefined will be handled at call site.
+  }
+  return undefined;
+}
+
 function registerMcpHttpRouters(options: {
   httpRouter: HttpRouterService;
   mcpService: McpService;
@@ -78,13 +104,37 @@ function registerOidcDiscoveryRouteIfEnabled(options: {
 
   // This should be replaced with throwing a WWW-Authenticate header, but that doesn't seem to be supported by
   // many of the MCP client as of yet. So this seems to be the oldest version of the spec thats implemented.
+  const oidcDiscoveryErrorMessage =
+    'Failed to load OIDC discovery document from auth service';
   rootRouter.use('/.well-known/oauth-authorization-server', async (_, res) => {
-    const authBaseUrl = await discovery.getBaseUrl('auth');
-    const oidcResponse = await fetch(
-      `${authBaseUrl}/.well-known/openid-configuration`,
-    );
+    try {
+      const authBaseUrlRaw = await discovery.getBaseUrl('auth');
+      const authBaseUrl = toSafeHttpUrl(authBaseUrlRaw);
 
-    res.json(await oidcResponse.json());
+      if (!authBaseUrl) {
+        res.status(502).json({ error: oidcDiscoveryErrorMessage });
+        return;
+      }
+
+      const openIdConfigurationUrl = new URL(
+        '/.well-known/openid-configuration',
+        authBaseUrl,
+      ).toString();
+
+      const oidcResponse = await fetchWithTimeout(
+        openIdConfigurationUrl,
+        10_000,
+      );
+
+      if (!oidcResponse.ok) {
+        res.status(502).json({ error: oidcDiscoveryErrorMessage });
+        return;
+      }
+
+      res.json(await oidcResponse.json());
+    } catch {
+      res.status(502).json({ error: oidcDiscoveryErrorMessage });
+    }
   });
 }
 

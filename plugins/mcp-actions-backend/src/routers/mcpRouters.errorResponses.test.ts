@@ -47,11 +47,7 @@ describe('createStreamableRouter error responses', () => {
     credentials: jest.fn().mockResolvedValue(mockCredentials.user()),
   };
 
-  it('returns the same JSON-RPC 405 payload for GET and DELETE', async () => {
-    const mcpService = {
-      getServer: jest.fn(),
-    };
-
+  function createStreamableApp(mcpService: { getServer: jest.Mock }) {
     const app = express();
     app.use(
       '/stream',
@@ -61,6 +57,15 @@ describe('createStreamableRouter error responses', () => {
         logger: logger as any,
       }),
     );
+    return app;
+  }
+
+  it('returns the same JSON-RPC 405 payload for GET and DELETE', async () => {
+    const mcpService = {
+      getServer: jest.fn(),
+    };
+
+    const app = createStreamableApp(mcpService);
 
     await withListeningServer(app, async port => {
       for (const method of ['GET', 'DELETE'] as const) {
@@ -80,16 +85,7 @@ describe('createStreamableRouter error responses', () => {
       }),
     };
 
-    const app = express();
-    app.use(express.json());
-    app.use(
-      '/stream',
-      createStreamableRouter({
-        mcpService: mcpService as any,
-        httpAuth: httpAuth as any,
-        logger: logger as any,
-      }),
-    );
+    const app = createStreamableApp(mcpService);
 
     await withListeningServer(app, async port => {
       const res = await fetch(`http://127.0.0.1:${port}/stream`, {
@@ -117,48 +113,49 @@ describe('createSseRouter error responses', () => {
     }),
   };
 
-  it('returns plain-text 400 when sessionId is missing', async () => {
+  const postJsonBody = {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  };
+
+  function createSseApp(service: { getServer: jest.Mock }) {
     const app = express();
-    app.use(express.json());
     app.use(
       '/sse',
       createSseRouter({
-        mcpService: mcpService as any,
+        mcpService: service as any,
         httpAuth: httpAuth as any,
       }),
     );
+    return app;
+  }
+
+  async function postSseMessages(
+    port: number,
+    query?: string,
+  ): Promise<Response> {
+    const url = query
+      ? `http://127.0.0.1:${port}/sse/messages?${query}`
+      : `http://127.0.0.1:${port}/sse/messages`;
+    return fetch(url, postJsonBody as any);
+  }
+
+  it('returns plain-text 400 when sessionId is missing', async () => {
+    const app = createSseApp(mcpService);
 
     await withListeningServer(app, async port => {
-      const res = await fetch(`http://127.0.0.1:${port}/sse/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
+      const res = await postSseMessages(port);
       expect(res.status).toBe(400);
       expect(await res.text()).toBe('sessionId is required');
     });
   });
 
   it('returns plain-text 400 when sessionId is unknown', async () => {
-    const app = express();
-    app.use(express.json());
-    app.use(
-      '/sse',
-      createSseRouter({
-        mcpService: mcpService as any,
-        httpAuth: httpAuth as any,
-      }),
-    );
+    const app = createSseApp(mcpService);
 
     await withListeningServer(app, async port => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/sse/messages?sessionId=unknown-session`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        },
-      );
+      const res = await postSseMessages(port, 'sessionId=unknown-session');
       expect(res.status).toBe(400);
       expect(await res.text()).toBe(
         'No transport found for sessionId "unknown-session"',
@@ -167,25 +164,10 @@ describe('createSseRouter error responses', () => {
   });
 
   it('returns plain-text 400 when sessionId is repeated (array query)', async () => {
-    const app = express();
-    app.use(express.json());
-    app.use(
-      '/sse',
-      createSseRouter({
-        mcpService: mcpService as any,
-        httpAuth: httpAuth as any,
-      }),
-    );
+    const app = createSseApp(mcpService);
 
     await withListeningServer(app, async port => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/sse/messages?sessionId=a&sessionId=b`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        },
-      );
+      const res = await postSseMessages(port, 'sessionId=a&sessionId=b');
       expect(res.status).toBe(400);
       expect(await res.text()).toBe(
         'sessionId must be a single query parameter',
@@ -194,23 +176,11 @@ describe('createSseRouter error responses', () => {
   });
 
   it('returns plain-text 400 when sessionId is empty or whitespace-only', async () => {
-    const app = express();
-    app.use(express.json());
-    app.use(
-      '/sse',
-      createSseRouter({
-        mcpService: mcpService as any,
-        httpAuth: httpAuth as any,
-      }),
-    );
+    const app = createSseApp(mcpService);
 
     await withListeningServer(app, async port => {
       for (const qs of ['sessionId=', 'sessionId=%20']) {
-        const res = await fetch(`http://127.0.0.1:${port}/sse/messages?${qs}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: '{}',
-        });
+        const res = await postSseMessages(port, qs);
         expect(res.status).toBe(400);
         expect(await res.text()).toBe('sessionId must be non-empty');
       }
