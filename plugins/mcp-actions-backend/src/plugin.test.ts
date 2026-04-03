@@ -24,8 +24,15 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import request from 'supertest';
 
 describe('Mcp Backend', () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
   const mockPluginWithActions = createBackendPlugin({
     pluginId: 'local',
     register({ registerInit }) {
@@ -195,5 +202,97 @@ describe('Mcp Backend', () => {
     expect('text' in firstContent && firstContent.text).toContain(
       'Actions must be invoked by a service, not a user',
     );
+  });
+
+  it('should proxy OIDC discovery response for dynamic client registration', async () => {
+    const oidcDocument = {
+      issuer: 'https://issuer.example.com',
+      authorization_endpoint: 'https://issuer.example.com/authorize',
+      token_endpoint: 'https://issuer.example.com/token',
+    };
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: jest.fn().mockResolvedValue(oidcDocument),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const backend = await startTestBackend({
+      features: [
+        mcpPlugin,
+        mockPluginWithActions,
+        mockServices.rootConfig.factory({
+          data: {
+            backend: {
+              actions: {
+                pluginSources: ['local'],
+              },
+            },
+            auth: {
+              experimentalDynamicClientRegistration: {
+                enabled: true,
+              },
+            },
+          },
+        }),
+      ],
+    });
+
+    try {
+      const response = await request(backend.server)
+        .get('/.well-known/oauth-authorization-server')
+        .expect(200);
+
+      expect(response.body).toEqual(oidcDocument);
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/.well-known/openid-configuration'),
+      );
+    } finally {
+      await backend.stop();
+    }
+  });
+
+  it('should return 502 when OIDC discovery fetch fails', async () => {
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const backend = await startTestBackend({
+      features: [
+        mcpPlugin,
+        mockPluginWithActions,
+        mockServices.rootConfig.factory({
+          data: {
+            backend: {
+              actions: {
+                pluginSources: ['local'],
+              },
+            },
+            auth: {
+              experimentalDynamicClientRegistration: {
+                enabled: true,
+              },
+            },
+          },
+        }),
+      ],
+    });
+
+    try {
+      const response = await request(backend.server)
+        .get('/.well-known/oauth-authorization-server')
+        .expect(502);
+
+      expect(response.body).toEqual({
+        error: 'Failed to load OIDC discovery document from auth service',
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/.well-known/openid-configuration'),
+      );
+    } finally {
+      await backend.stop();
+    }
   });
 });

@@ -84,17 +84,37 @@ export const mcpPlugin = createBackendPlugin({
             'auth.experimentalDynamicClientRegistration.enabled',
           )
         ) {
+          const oidcDiscoveryErrorMessage =
+            'Failed to load OIDC discovery document from auth service';
+
           // This should be replaced with throwing a WWW-Authenticate header, but that doesn't seem to be supported by
           // many of the MCP client as of yet. So this seems to be the oldest version of the spec thats implemented.
           rootRouter.use(
             '/.well-known/oauth-authorization-server',
             async (_, res) => {
-              const authBaseUrl = await discovery.getBaseUrl('auth');
-              const oidcResponse = await fetch(
-                `${authBaseUrl}/.well-known/openid-configuration`,
-              );
+              try {
+                const authBaseUrl = await discovery.getBaseUrl('auth');
+                const oidcResponse = await fetch(
+                  `${authBaseUrl}/.well-known/openid-configuration`,
+                );
 
-              res.json(await oidcResponse.json());
+                if (!oidcResponse.ok) {
+                  logger.error(oidcDiscoveryErrorMessage, {
+                    status: oidcResponse.status,
+                    statusText: oidcResponse.statusText,
+                  });
+                  res.status(502).json({ error: oidcDiscoveryErrorMessage });
+                  return;
+                }
+
+                res.json(await oidcResponse.json());
+              } catch (error) {
+                logger.error(
+                  oidcDiscoveryErrorMessage,
+                  error instanceof Error ? error : { message: String(error) },
+                );
+                res.status(502).json({ error: oidcDiscoveryErrorMessage });
+              }
             },
           );
         }
