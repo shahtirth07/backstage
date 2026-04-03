@@ -24,8 +24,21 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { expectedMcpTool } from './testUtils/expectedMcpTool';
 
 describe('Mcp Backend', () => {
+  const expectedMakeGreetingTool = expectedMcpTool({
+    name: 'make-greeting',
+    title: 'Make Greeting',
+    description: 'Make a greeting',
+    inputProperties: {
+      name: {
+        type: 'string',
+      },
+    },
+    required: ['name'],
+  });
+
   const mockPluginWithActions = createBackendPlugin({
     pluginId: 'local',
     register({ registerInit }) {
@@ -97,30 +110,7 @@ describe('Mcp Backend', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual([expectedMakeGreetingTool]);
   });
 
   it('should support sse spec', async () => {
@@ -140,30 +130,7 @@ describe('Mcp Backend', () => {
 
     await client.close();
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual([expectedMakeGreetingTool]);
   });
 
   it('should execute a registered action via tools/call', async () => {
