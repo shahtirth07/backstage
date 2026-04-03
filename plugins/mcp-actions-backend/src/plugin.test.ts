@@ -24,7 +24,6 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import request from 'supertest';
 
 describe('Mcp Backend', () => {
   const originalFetch = global.fetch;
@@ -238,11 +237,12 @@ describe('Mcp Backend', () => {
     });
 
     try {
-      const response = await request(backend.server)
-        .get('/.well-known/oauth-authorization-server')
-        .expect(200);
+      const response = await originalFetch(
+        `http://localhost:${backend.server.port()}/.well-known/oauth-authorization-server`,
+      );
 
-      expect(response.body).toEqual(oidcDocument);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toEqual(oidcDocument);
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining('/.well-known/openid-configuration'),
       );
@@ -281,11 +281,12 @@ describe('Mcp Backend', () => {
     });
 
     try {
-      const response = await request(backend.server)
-        .get('/.well-known/oauth-authorization-server')
-        .expect(502);
+      const response = await originalFetch(
+        `http://localhost:${backend.server.port()}/.well-known/oauth-authorization-server`,
+      );
 
-      expect(response.body).toEqual({
+      expect(response.status).toBe(502);
+      await expect(response.json()).resolves.toEqual({
         error: 'Failed to load OIDC discovery document from auth service',
       });
       expect(fetchMock).toHaveBeenCalledWith(
