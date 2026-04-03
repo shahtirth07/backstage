@@ -18,6 +18,8 @@ import { Router } from 'express';
 import { McpService } from '../services/McpService';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { HttpAuthService } from '@backstage/backend-plugin-api';
+import { sendPlainTextClientError } from './mcpHttpErrorResponses';
+import { parseSessionIdQueryParam } from './parseSessionIdQueryParam';
 
 /**
  * Legacy SSE endpoint for older clients, hopefully will not be needed for much longer.
@@ -52,21 +54,22 @@ export const createSseRouter = ({
   });
 
   router.post('/messages', async (req, res) => {
-    const sessionId = req.query.sessionId as string;
-
-    if (!sessionId) {
-      res.status(400).contentType('text/plain').write('sessionId is required');
+    const parsed = parseSessionIdQueryParam(req.query.sessionId);
+    if (!parsed.ok) {
+      sendPlainTextClientError(res, 400, parsed.message);
       return;
     }
+    const { sessionId } = parsed;
 
     const transport = transportsToSessionId.get(sessionId);
     if (transport) {
       await transport.handlePostMessage(req, res, req.body);
     } else {
-      res
-        .status(400)
-        .contentType('text/plain')
-        .write(`No transport found for sessionId "${sessionId}"`);
+      sendPlainTextClientError(
+        res,
+        400,
+        `No transport found for sessionId "${sessionId}"`,
+      );
     }
   });
   return router;

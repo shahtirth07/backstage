@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 import PromiseRouter from 'express-promise-router';
-import { Response, Router } from 'express';
+import { Router } from 'express';
 import { McpService } from '../services/McpService';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { HttpAuthService, LoggerService } from '@backstage/backend-plugin-api';
 import { isError } from '@backstage/errors';
+import {
+  MCP_STREAMABLE_JSON_RPC_ERROR,
+  sendJsonRpcErrorAsJson,
+  sendJsonRpcErrorWithWriteHead,
+} from './mcpHttpErrorResponses';
 
 export const createStreamableRouter = ({
   mcpService,
@@ -30,18 +35,6 @@ export const createStreamableRouter = ({
   httpAuth: HttpAuthService;
 }): Router => {
   const router = PromiseRouter();
-  const methodNotAllowedBody = {
-    jsonrpc: '2.0',
-    error: {
-      code: -32000,
-      message: 'Method not allowed.',
-    },
-    id: null,
-  };
-
-  function sendMethodNotAllowed(res: Response) {
-    res.writeHead(405).end(JSON.stringify(methodNotAllowedBody));
-  }
 
   router.post('/', async (req, res) => {
     try {
@@ -68,26 +61,31 @@ export const createStreamableRouter = ({
       }
 
       if (!res.headersSent) {
-        res.status(500).json({
-          jsonrpc: '2.0',
-          error: {
-            code: -32603,
-            message: 'Internal server error',
-          },
-          id: null,
-        });
+        sendJsonRpcErrorAsJson(
+          res,
+          500,
+          MCP_STREAMABLE_JSON_RPC_ERROR.internalServerError,
+        );
       }
     }
   });
 
   router.get('/', async (_, res) => {
     // We only support POST requests, so we return a 405 error for all other methods.
-    sendMethodNotAllowed(res);
+    sendJsonRpcErrorWithWriteHead(
+      res,
+      405,
+      MCP_STREAMABLE_JSON_RPC_ERROR.methodNotAllowed,
+    );
   });
 
   router.delete('/', async (_, res) => {
     // We only support POST requests, so we return a 405 error for all other methods.
-    sendMethodNotAllowed(res);
+    sendJsonRpcErrorWithWriteHead(
+      res,
+      405,
+      MCP_STREAMABLE_JSON_RPC_ERROR.methodNotAllowed,
+    );
   });
 
   return router;
