@@ -202,9 +202,9 @@ describe('Mcp Backend', () => {
       issuer: 'http://mock-issuer',
       authorization_endpoint: 'http://mock-issuer/auth',
     };
-    const originalFetch = global.fetch.bind(global);
+    const originalFetch = globalThis.fetch.bind(globalThis);
     const fetchMock = jest
-      .spyOn(global, 'fetch')
+      .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString();
         if (url.includes('/.well-known/openid-configuration')) {
