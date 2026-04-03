@@ -55,7 +55,7 @@ export const createSseRouter = ({
     const sessionId = req.query.sessionId as string;
 
     if (!sessionId) {
-      res.status(400).contentType('text/plain').write('sessionId is required');
+      res.status(400).contentType('text/plain').send('sessionId is required');
       return;
     }
 
@@ -66,7 +66,7 @@ export const createSseRouter = ({
       res
         .status(400)
         .contentType('text/plain')
-        .write(`No transport found for sessionId "${sessionId}"`);
+        .send(`No transport found for sessionId "${sessionId}"`);
     }
   });
   return router;

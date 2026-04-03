@@ -82,6 +82,23 @@ describe('Mcp Backend', () => {
     };
   };
 
+  const fetchWithTimeout = async (
+    url: string,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), 2_000);
+
+    try {
+      return await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+  };
+
   it('should support streamable spec', async () => {
     const { client, serverAddress } = await getContext();
     const transport = new StreamableHTTPClientTransport(
@@ -194,6 +211,33 @@ describe('Mcp Backend', () => {
     );
     expect('text' in firstContent && firstContent.text).toContain(
       'Actions must be invoked by a service, not a user',
+    );
+  });
+
+  it('returns completed 400 response when sessionId is missing', async () => {
+    const { serverAddress } = await getContext();
+
+    const response = await fetchWithTimeout(
+      `${serverAddress}/api/mcp-actions/v1/sse/messages`,
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe('sessionId is required');
+  });
+
+  it('returns completed 400 response for unknown sessionId', async () => {
+    const { serverAddress } = await getContext();
+    const sessionId = 'unknown-session-id';
+
+    const response = await fetchWithTimeout(
+      `${serverAddress}/api/mcp-actions/v1/sse/messages?sessionId=${sessionId}`,
+      { method: 'POST' },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toBe(
+      `No transport found for sessionId "${sessionId}"`,
     );
   });
 });
