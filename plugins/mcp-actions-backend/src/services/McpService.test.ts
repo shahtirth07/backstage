@@ -27,6 +27,7 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { expectedMcpTool } from '../testUtils/expectedMcpTool';
 
 describe('createListToolsHandler', () => {
   it('lists registered actions as MCP tools', async () => {
@@ -148,6 +149,18 @@ describe('createCallToolHandler', () => {
 });
 
 describe('McpService', () => {
+  const expectedMockActionTool = expectedMcpTool({
+    name: 'mock-action',
+    title: 'Test',
+    description: 'Test',
+    inputProperties: {
+      input: {
+        type: 'string',
+      },
+    },
+    required: ['input'],
+  });
+
   it('should list the available actions as tools in the mcp backend', async () => {
     const mockActionsRegistry = actionsRegistryServiceMock();
     mockActionsRegistry.register({
@@ -189,30 +202,7 @@ describe('McpService', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Test',
-        },
-        description: 'Test',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            input: {
-              type: 'string',
-            },
-          },
-          required: ['input'],
-          type: 'object',
-        },
-        name: 'mock-action',
-      },
-    ]);
+    expect(result.tools).toEqual([expectedMockActionTool]);
   });
 
   it('should call the action when the tool is invoked', async () => {

@@ -24,32 +24,20 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { expectedMcpTool } from './testUtils/expectedMcpTool';
 import type { Server } from 'node:http';
 
-const EXPECTED_MAKE_GREETING_TOOLS = [
-  {
-    annotations: {
-      destructiveHint: true,
-      idempotentHint: false,
-      openWorldHint: false,
-      readOnlyHint: false,
-      title: 'Make Greeting',
+const EXPECTED_MAKE_GREETING_TOOL = expectedMcpTool({
+  name: 'make-greeting',
+  title: 'Make Greeting',
+  description: 'Make a greeting',
+  inputProperties: {
+    name: {
+      type: 'string',
     },
-    description: 'Make a greeting',
-    inputSchema: {
-      $schema: 'http://json-schema.org/draft-07/schema#',
-      additionalProperties: false,
-      properties: {
-        name: {
-          type: 'string',
-        },
-      },
-      required: ['name'],
-      type: 'object',
-    },
-    name: 'make-greeting',
   },
-] as const;
+  required: ['name'],
+});
 
 const MCP_TEST_ROOT_CONFIG = {
   backend: {
@@ -185,7 +173,7 @@ describe('Mcp Backend', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual(EXPECTED_MAKE_GREETING_TOOLS);
+    expect(result.tools).toEqual([EXPECTED_MAKE_GREETING_TOOL]);
   });
 
   it('should support sse spec', async () => {
@@ -205,7 +193,7 @@ describe('Mcp Backend', () => {
 
     await client.close();
 
-    expect(result.tools).toEqual(EXPECTED_MAKE_GREETING_TOOLS);
+    expect(result.tools).toEqual([EXPECTED_MAKE_GREETING_TOOL]);
   });
 
   it('should execute a registered action via tools/call', async () => {
