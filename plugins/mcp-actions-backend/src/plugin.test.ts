@@ -24,8 +24,42 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Server } from 'node:http';
+
+function readServerPort(server: Server): number {
+  const address = server.address();
+  if (typeof address !== 'object' || address === null || !('port' in address)) {
+    throw new Error('server broke');
+  }
+  return address.port;
+}
 
 describe('Mcp Backend', () => {
+  const expectedMakeGreetingTools = [
+    {
+      annotations: {
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+        readOnlyHint: false,
+        title: 'Make Greeting',
+      },
+      description: 'Make a greeting',
+      inputSchema: {
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        additionalProperties: false,
+        properties: {
+          name: {
+            type: 'string',
+          },
+        },
+        required: ['name'],
+        type: 'object',
+      },
+      name: 'make-greeting',
+    },
+  ];
+
   const mockPluginWithActions = createBackendPlugin({
     pluginId: 'local',
     register({ registerInit }) {
@@ -49,36 +83,34 @@ describe('Mcp Backend', () => {
     },
   });
 
-  const getContext = async () => {
-    const { server } = await startTestBackend({
+  const mcpTestRootConfigData = {
+    backend: {
+      actions: {
+        pluginSources: ['local'],
+      },
+    },
+  };
+
+  const startMcpTestBackend = (configData: typeof mcpTestRootConfigData) =>
+    startTestBackend({
       features: [
         mcpPlugin,
         mockPluginWithActions,
-        mockServices.rootConfig.factory({
-          data: {
-            backend: {
-              actions: {
-                pluginSources: ['local'],
-              },
-            },
-          },
-        }),
+        mockServices.rootConfig.factory({ data: configData }),
       ],
     });
+
+  const getContext = async () => {
+    const { server } = await startMcpTestBackend(mcpTestRootConfigData);
 
     const client = new Client({
       name: 'test client',
       version: '1.0',
     });
 
-    const address = server.address();
-    if (typeof address !== 'object' || !('port' in address!)) {
-      throw new Error('server broke');
-    }
-
     return {
       client,
-      serverAddress: `http://localhost:${address.port}`,
+      serverAddress: `http://localhost:${readServerPort(server)}`,
     };
   };
 
@@ -97,30 +129,7 @@ describe('Mcp Backend', () => {
       ListToolsResultSchema,
     );
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual(expectedMakeGreetingTools);
   });
 
   it('should support sse spec', async () => {
@@ -140,30 +149,7 @@ describe('Mcp Backend', () => {
 
     await client.close();
 
-    expect(result.tools).toEqual([
-      {
-        annotations: {
-          destructiveHint: true,
-          idempotentHint: false,
-          openWorldHint: false,
-          readOnlyHint: false,
-          title: 'Make Greeting',
-        },
-        description: 'Make a greeting',
-        inputSchema: {
-          $schema: 'http://json-schema.org/draft-07/schema#',
-          additionalProperties: false,
-          properties: {
-            name: {
-              type: 'string',
-            },
-          },
-          required: ['name'],
-          type: 'object',
-        },
-        name: 'make-greeting',
-      },
-    ]);
+    expect(result.tools).toEqual(expectedMakeGreetingTools);
   });
 
   it('should execute a registered action via tools/call', async () => {
@@ -202,9 +188,9 @@ describe('Mcp Backend', () => {
       issuer: 'http://mock-issuer',
       authorization_endpoint: 'http://mock-issuer/auth',
     };
-    const originalFetch = global.fetch.bind(global);
+    const originalFetch = globalThis.fetch.bind(globalThis);
     const fetchMock = jest
-      .spyOn(global, 'fetch')
+      .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
         const url = typeof input === 'string' ? input : input.toString();
         if (url.includes('/.well-known/openid-configuration')) {
@@ -217,34 +203,19 @@ describe('Mcp Backend', () => {
       });
 
     try {
-      const { server } = await startTestBackend({
-        features: [
-          mcpPlugin,
-          mockPluginWithActions,
-          mockServices.rootConfig.factory({
-            data: {
-              backend: {
-                actions: {
-                  pluginSources: ['local'],
-                },
-              },
-              auth: {
-                experimentalDynamicClientRegistration: {
-                  enabled: true,
-                },
-              },
-            },
-          }),
-        ],
+      const { server } = await startMcpTestBackend({
+        ...mcpTestRootConfigData,
+        auth: {
+          experimentalDynamicClientRegistration: {
+            enabled: true,
+          },
+        },
       });
 
-      const address = server.address();
-      if (typeof address !== 'object' || !('port' in address!)) {
-        throw new Error('server broke');
-      }
-
       const res = await fetch(
-        `http://localhost:${address.port}/.well-known/oauth-authorization-server`,
+        `http://localhost:${readServerPort(
+          server,
+        )}/.well-known/oauth-authorization-server`,
       );
       expect(res.ok).toBe(true);
       await expect(res.json()).resolves.toEqual(openIdDocument);
