@@ -165,4 +165,55 @@ describe('createSseRouter error responses', () => {
       );
     });
   });
+
+  it('returns plain-text 400 when sessionId is repeated (array query)', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use(
+      '/sse',
+      createSseRouter({
+        mcpService: mcpService as any,
+        httpAuth: httpAuth as any,
+      }),
+    );
+
+    await withListeningServer(app, async port => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/sse/messages?sessionId=a&sessionId=b`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        },
+      );
+      expect(res.status).toBe(400);
+      expect(await res.text()).toBe(
+        'sessionId must be a single query parameter',
+      );
+    });
+  });
+
+  it('returns plain-text 400 when sessionId is empty or whitespace-only', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use(
+      '/sse',
+      createSseRouter({
+        mcpService: mcpService as any,
+        httpAuth: httpAuth as any,
+      }),
+    );
+
+    await withListeningServer(app, async port => {
+      for (const qs of ['sessionId=', 'sessionId=%20']) {
+        const res = await fetch(`http://127.0.0.1:${port}/sse/messages?${qs}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        expect(res.status).toBe(400);
+        expect(await res.text()).toBe('sessionId must be non-empty');
+      }
+    });
+  });
 });
