@@ -24,6 +24,15 @@ import {
   CallToolResultSchema,
   ListToolsResultSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import type { Server } from 'node:http';
+
+function readServerPort(server: Server): number {
+  const address = server.address();
+  if (typeof address !== 'object' || address === null || !('port' in address)) {
+    throw new Error('server broke');
+  }
+  return address.port;
+}
 
 describe('Mcp Backend', () => {
   const expectedMakeGreetingTools = [
@@ -99,14 +108,9 @@ describe('Mcp Backend', () => {
       version: '1.0',
     });
 
-    const address = server.address();
-    if (typeof address !== 'object' || !('port' in address!)) {
-      throw new Error('server broke');
-    }
-
     return {
       client,
-      serverAddress: `http://localhost:${address.port}`,
+      serverAddress: `http://localhost:${readServerPort(server)}`,
     };
   };
 
@@ -208,13 +212,10 @@ describe('Mcp Backend', () => {
         },
       });
 
-      const address = server.address();
-      if (typeof address !== 'object' || !('port' in address!)) {
-        throw new Error('server broke');
-      }
-
       const res = await fetch(
-        `http://localhost:${address.port}/.well-known/oauth-authorization-server`,
+        `http://localhost:${readServerPort(
+          server,
+        )}/.well-known/oauth-authorization-server`,
       );
       expect(res.ok).toBe(true);
       await expect(res.json()).resolves.toEqual(openIdDocument);
