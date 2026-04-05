@@ -14,17 +14,33 @@
  * limitations under the License.
  */
 
-import { NotFoundError } from '@backstage/errors';
+import {
+  AuthenticationError,
+  NotAllowedError,
+  NotFoundError,
+} from '@backstage/errors';
 import { describeBackstageErrorForMcp, handleErrors } from './handleErrors';
 
 describe('describeBackstageErrorForMcp', () => {
-  it('returns a description for a known Backstage error', () => {
-    const err = new NotFoundError('nothing here');
-    const result = describeBackstageErrorForMcp(err);
+  it.each([
+    {
+      error: new NotFoundError('nothing here'),
+      expected: 'NotFoundError: nothing here',
+    },
+    {
+      error: new AuthenticationError('missing token'),
+      expected: 'AuthenticationError: missing token',
+    },
+    {
+      error: new NotAllowedError('service credentials required'),
+      expected: 'NotAllowedError: service credentials required',
+    },
+  ])('returns a description for $error.name', ({ error, expected }) => {
+    const result = describeBackstageErrorForMcp(error);
 
     expect(result).toEqual({
       handled: true,
-      description: 'NotFoundError: nothing here',
+      description: expected,
     });
   });
 
