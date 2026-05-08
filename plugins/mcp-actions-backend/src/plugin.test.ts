@@ -15,6 +15,7 @@
  */
 import { mockServices, startTestBackend } from '@backstage/backend-test-utils';
 import { mcpPlugin } from './plugin';
+import { fetchWithTimeout } from './services/fetchWithTimeout';
 import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
 import { createBackendPlugin } from '@backstage/backend-plugin-api';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -141,22 +142,8 @@ describe('Mcp Backend', () => {
     };
   };
 
-  const fetchWithTimeout = async (
-    url: string,
-    init?: RequestInit,
-  ): Promise<Response> => {
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), 2_000);
-
-    try {
-      return await fetch(url, {
-        ...init,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeoutHandle);
-    }
-  };
+  const fetchWithTestTimeout = (url: string, init?: RequestInit) =>
+    fetchWithTimeout(url, { ...init, timeoutMs: 2_000 });
 
   it('should support streamable spec', async () => {
     const { client, serverAddress } = await getContext();
@@ -230,7 +217,7 @@ describe('Mcp Backend', () => {
   it('returns completed 400 response when sessionId is missing', async () => {
     const { serverAddress } = await getContext();
 
-    const response = await fetchWithTimeout(
+    const response = await fetchWithTestTimeout(
       `${serverAddress}/api/mcp-actions/v1/sse/messages`,
       { method: 'POST' },
     );
@@ -243,7 +230,7 @@ describe('Mcp Backend', () => {
     const { serverAddress } = await getContext();
     const sessionId = 'unknown-session-id';
 
-    const response = await fetchWithTimeout(
+    const response = await fetchWithTestTimeout(
       `${serverAddress}/api/mcp-actions/v1/sse/messages?sessionId=${sessionId}`,
       { method: 'POST' },
     );
