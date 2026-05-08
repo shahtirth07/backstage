@@ -27,17 +27,20 @@ import Button from '@material-ui/core/Button';
 import { TextFieldProps } from '@material-ui/core/TextField';
 import DefaultSearchIcon from '@material-ui/icons/Search';
 import {
-  ReactNode,
   ChangeEvent,
-  forwardRef,
+  ForwardRefExoticComponent,
   KeyboardEvent,
+  PropsWithoutRef,
+  ReactNode,
+  RefAttributes,
+  forwardRef,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from 'react';
 import useDebounce from 'react-use/esm/useDebounce';
-import { SearchContextProvider, useSearch } from '../../context';
+import { useSearch } from '../../context';
 import { useTranslationRef } from '@backstage/frontend-plugin-api';
 import { searchReactTranslationRef } from '../../translation';
 
@@ -56,9 +59,14 @@ export type SearchBarBaseProps = Omit<TextFieldProps, 'onChange'> & {
 };
 
 /**
- * All search boxes exported by the search plugin are based on the <SearchBarBase />,
- * and this one is based on the <InputBase /> component from Material UI.
- * Recommended if you don't use Search Provider or Search Context.
+ * Pure presentational search input used by all search boxes exported by
+ * the search plugin. Owns the debounced text state and Backstage's default
+ * input chrome (icon, clear button), but is intentionally decoupled from
+ * the SearchContext: callers supply `value` / `onChange` themselves.
+ *
+ * Use this directly when you maintain your own state (see `HomePageSearchBar`
+ * for an example), or compose it with {@link SearchBar} (a Decorator that
+ * adds SearchContext wiring + analytics) when context wiring is needed.
  *
  * @public
  */
@@ -170,31 +178,29 @@ export const SearchBarBase = forwardRef((props: SearchBarBaseProps, ref) => {
   );
 
   return (
-    <SearchContextProvider inheritParentContextIfAvailable>
-      <TextField
-        id="search-bar-text-field"
-        data-testid="search-bar-next"
-        variant="outlined"
-        margin="normal"
-        inputRef={ref}
-        value={value}
-        label={label}
-        placeholder={inputPlaceholder}
-        InputProps={{
-          startAdornment,
-          endAdornment: clearButton ? clearButtonEndAdornment : endAdornment,
-          ...InputProps,
-        }}
-        inputProps={{
-          'aria-label': ariaLabel,
-          ...inputProps,
-        }}
-        fullWidth={fullWidth}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        {...rest}
-      />
-    </SearchContextProvider>
+    <TextField
+      id="search-bar-text-field"
+      data-testid="search-bar-next"
+      variant="outlined"
+      margin="normal"
+      inputRef={ref}
+      value={value}
+      label={label}
+      placeholder={inputPlaceholder}
+      InputProps={{
+        startAdornment,
+        endAdornment: clearButton ? clearButtonEndAdornment : endAdornment,
+        ...InputProps,
+      }}
+      inputProps={{
+        'aria-label': ariaLabel,
+        ...inputProps,
+      }}
+      fullWidth={fullWidth}
+      onChange={handleChange}
+      onKeyDown={handleKeyDown}
+      {...rest}
+    />
   );
 });
 
@@ -205,45 +211,59 @@ export const SearchBarBase = forwardRef((props: SearchBarBaseProps, ref) => {
  */
 export type SearchBarProps = Partial<SearchBarBaseProps>;
 
+type SearchBarBaseComponent = ForwardRefExoticComponent<
+  PropsWithoutRef<SearchBarBaseProps> & RefAttributes<unknown>
+>;
+
 /**
- * Recommended search bar when you use the Search Provider or Search Context.
+ * Decorator (higher-order component) that wires a SearchBarBase-shaped
+ * component to the surrounding {@link SearchContextProvider} and adds
+ * analytics context. Reads `term` from context, bridges it to the wrapped
+ * component's `value` / `onChange`, and supports an optional `value`
+ * prop to seed the term on mount.
  *
- * @public
+ * Kept package-internal: consumers compose via {@link SearchBar} or
+ * by writing their own decorator in user code.
  */
-export const SearchBar = forwardRef((props: SearchBarProps, ref) => {
-  const { value: initialValue = '', onChange, ...rest } = props;
+const withSearchContext = (Component: SearchBarBaseComponent) =>
+  forwardRef<unknown, SearchBarProps>((props, ref) => {
+    const { value: initialValue = '', onChange, ...rest } = props;
 
-  const { term, setTerm } = useSearch();
+    const { term, setTerm } = useSearch();
 
-  useEffect(() => {
-    if (initialValue) {
-      setTerm(String(initialValue));
-    }
-  }, [initialValue, setTerm]);
-
-  const handleChange = useCallback(
-    (newValue: string) => {
-      if (onChange) {
-        onChange(newValue);
-      } else {
-        setTerm(newValue);
+    useEffect(() => {
+      if (initialValue) {
+        setTerm(String(initialValue));
       }
-    },
-    [onChange, setTerm],
-  );
+    }, [initialValue, setTerm]);
 
-  return (
-    <SearchContextProvider inheritParentContextIfAvailable>
+    const handleChange = useCallback(
+      (newValue: string) => {
+        if (onChange) {
+          onChange(newValue);
+        } else {
+          setTerm(newValue);
+        }
+      },
+      [onChange, setTerm],
+    );
+
+    return (
       <AnalyticsContext
         attributes={{ pluginId: 'search', extension: 'SearchBar' }}
       >
-        <SearchBarBase
-          {...rest}
-          ref={ref}
-          value={term}
-          onChange={handleChange}
-        />
+        <Component {...rest} ref={ref} value={term} onChange={handleChange} />
       </AnalyticsContext>
-    </SearchContextProvider>
-  );
-});
+    );
+  });
+
+/**
+ * SearchBar is {@link SearchBarBase} decorated with SearchContext wiring
+ * and analytics. Use this when your subtree is wrapped in a
+ * {@link SearchContextProvider}: the bar reads `term` from context and
+ * writes back to it on change. For standalone use without the search
+ * context, use {@link SearchBarBase} directly with your own state.
+ *
+ * @public
+ */
+export const SearchBar = withSearchContext(SearchBarBase);
