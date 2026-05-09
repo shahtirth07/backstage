@@ -29,8 +29,8 @@ import {
   AutocompleteFilter,
   SearchAutocompleteFilterProps,
 } from './SearchFilter.Autocomplete';
-import { useAsyncFilterValues, useDefaultFilterValue } from './hooks';
-import { ensureFilterValueWithLabel, FilterValue } from './types';
+import { useResolvedFilterValues } from './hooks';
+import { FilterValue } from './types';
 import { useTranslationRef } from '@backstage/frontend-plugin-api';
 import { searchReactTranslationRef } from '../../translation';
 
@@ -94,19 +94,13 @@ export const CheckboxFilter = (props: SearchFilterComponentProps) => {
   } = props;
   const classes = useStyles();
   const { filters, setFilters } = useSearch();
-  useDefaultFilterValue(name, defaultValue);
-  const asyncValues =
-    typeof givenValues === 'function' ? givenValues : undefined;
-  const defaultValues =
-    typeof givenValues === 'function'
-      ? undefined
-      : givenValues.map(v => ensureFilterValueWithLabel(v));
-  const { value: values = [], loading } = useAsyncFilterValues(
-    asyncValues,
-    '',
-    defaultValues,
+  const { value: values = [], loading } = useResolvedFilterValues({
+    name,
+    values: givenValues,
+    defaultValue,
+    inputValue: '',
     valuesDebounceMs,
-  );
+  });
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const {
@@ -168,19 +162,13 @@ export const SelectFilter = (props: SearchFilterComponentProps) => {
     valuesDebounceMs,
   } = props;
   const { t } = useTranslationRef(searchReactTranslationRef);
-  useDefaultFilterValue(name, defaultValue);
-  const asyncValues =
-    typeof givenValues === 'function' ? givenValues : undefined;
-  const defaultValues =
-    typeof givenValues === 'function'
-      ? undefined
-      : givenValues?.map(v => ensureFilterValueWithLabel(v));
-  const { value: values = [], loading } = useAsyncFilterValues(
-    asyncValues,
-    '',
-    defaultValues,
+  const { value: values = [], loading } = useResolvedFilterValues({
+    name,
+    values: givenValues,
+    defaultValue,
+    inputValue: '',
     valuesDebounceMs,
-  );
+  });
   const allOptionValue = useRef(uuid());
   const allOption = {
     value: allOptionValue.current,
