@@ -25,16 +25,23 @@ import { version } from '@backstage/plugin-mcp-actions-backend/package.json';
 import { NotFoundError } from '@backstage/errors';
 
 import { handleErrors } from './handleErrors';
+import {
+  type ActionResolutionStrategy,
+  createActionResolutionStrategy,
+} from './actionResolutionStrategy';
 
 type CallToolParams = { name: string; arguments?: Record<string, unknown> };
 
 async function invokeRegisteredAction(
-  actions: ActionsService,
-  credentials: BackstageCredentials,
-  params: CallToolParams,
+  deps: {
+    actions: ActionsService;
+    strategy: ActionResolutionStrategy;
+    credentials: BackstageCredentials;
+    params: CallToolParams;
+  },
 ) {
-  const { actions: listed } = await actions.list({ credentials });
-  const action = listed.find(a => a.name === params.name);
+  const { actions, strategy, credentials, params } = deps;
+  const action = await strategy.findActionByName(params.name);
 
   if (!action) {
     throw new NotFoundError(`Action "${params.name}" not found`);
@@ -67,26 +74,12 @@ export function createListToolsHandler(deps: {
   credentials: BackstageCredentials;
 }) {
   const { actions, credentials } = deps;
+  const strategy = createActionResolutionStrategy({ actions, credentials });
+
   return async () => {
     // TODO: switch this to be configuration based later
-    const { actions: listed } = await actions.list({ credentials });
-
     return {
-      tools: listed.map(action => ({
-        inputSchema: action.schema.input,
-        // todo(blam): this is unfortunately not supported by most clients yet.
-        // When this is provided you need to provide structuredContent instead.
-        // outputSchema: action.schema.output,
-        name: action.name,
-        description: action.description,
-        annotations: {
-          title: action.title,
-          destructiveHint: action.attributes.destructive,
-          idempotentHint: action.attributes.idempotent,
-          readOnlyHint: action.attributes.readOnly,
-          openWorldHint: false,
-        },
-      })),
+      tools: await strategy.listTools(),
     };
   };
 }
@@ -99,9 +92,16 @@ export function createCallToolHandler(deps: {
   credentials: BackstageCredentials;
 }) {
   const { actions, credentials } = deps;
+  const strategy = createActionResolutionStrategy({ actions, credentials });
+
   return async ({ params }: { params: CallToolParams }) => {
     return handleErrors(async () =>
-      invokeRegisteredAction(actions, credentials, params),
+      invokeRegisteredAction({
+        actions,
+        strategy,
+        credentials,
+        params,
+      }),
     );
   };
 }
