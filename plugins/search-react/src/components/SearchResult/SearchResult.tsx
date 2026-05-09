@@ -18,11 +18,7 @@ import { ReactNode } from 'react';
 import useAsync, { AsyncState } from 'react-use/esm/useAsync';
 import { isFunction } from 'lodash';
 
-import {
-  Progress,
-  EmptyState,
-  ResponseErrorPanel,
-} from '@backstage/core-components';
+import { EmptyState } from '@backstage/core-components';
 import { useApi, AnalyticsContext } from '@backstage/core-plugin-api';
 import { SearchQuery, SearchResultSet } from '@backstage/plugin-search-common';
 
@@ -32,6 +28,7 @@ import {
   SearchResultListItemExtensions,
   SearchResultListItemExtensionsProps,
 } from '../../extensions';
+import { SearchResultStateBoundary } from '../SearchResultStateBoundary';
 import { useTranslationRef } from '@backstage/frontend-plugin-api';
 import { searchReactTranslationRef } from '../../translation';
 
@@ -198,36 +195,29 @@ export const SearchResultComponent = (props: SearchResultProps) => {
     ...rest
   } = props;
 
+  const renderSuccessContent = (value: SearchResultSet | undefined) => {
+    if (isFunction(children)) {
+      return value ? children(value) : null;
+    }
+    return (
+      <SearchResultListItemExtensions {...rest} results={value?.results ?? []}>
+        {children}
+      </SearchResultListItemExtensions>
+    );
+  };
+
   return (
     <SearchResultState query={query}>
-      {({ loading, error, value }) => {
-        if (loading) {
-          return <Progress />;
-        }
-
-        if (error) {
-          return (
-            <ResponseErrorPanel
-              title="Error encountered while fetching search results"
-              error={error}
-            />
-          );
-        }
-
-        if (!value?.results.length) {
-          return noResultsComponent;
-        }
-
-        if (isFunction(children)) {
-          return children(value);
-        }
-
-        return (
-          <SearchResultListItemExtensions {...rest} results={value.results}>
-            {children}
-          </SearchResultListItemExtensions>
-        );
-      }}
+      {({ loading, error, value }) => (
+        <SearchResultStateBoundary
+          loading={loading}
+          error={error}
+          isEmpty={!value?.results.length}
+          noResultsComponent={noResultsComponent}
+        >
+          {renderSuccessContent(value)}
+        </SearchResultStateBoundary>
+      )}
     </SearchResultState>
   );
 };

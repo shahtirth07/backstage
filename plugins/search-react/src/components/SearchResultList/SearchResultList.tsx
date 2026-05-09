@@ -18,11 +18,7 @@ import { ReactNode } from 'react';
 
 import List, { ListProps } from '@material-ui/core/List';
 
-import {
-  Progress,
-  EmptyState,
-  ResponseErrorPanel,
-} from '@backstage/core-components';
+import { EmptyState } from '@backstage/core-components';
 import { AnalyticsContext } from '@backstage/core-plugin-api';
 import { SearchResult } from '@backstage/plugin-search-common';
 
@@ -30,6 +26,7 @@ import { useSearchResultListItemExtensions } from '../../extensions';
 
 import { DefaultResultListItem } from '../DefaultResultListItem';
 import { SearchResultState, SearchResultStateProps } from '../SearchResult';
+import { SearchResultStateBoundary } from '../SearchResultStateBoundary';
 import { useTranslationRef } from '@backstage/frontend-plugin-api';
 import { searchReactTranslationRef } from '../../translation';
 
@@ -92,24 +89,16 @@ export const SearchResultListLayout = (props: SearchResultListLayoutProps) => {
     ...rest
   } = props;
 
-  if (loading) {
-    return <Progress />;
-  }
-
-  if (error) {
-    return (
-      <ResponseErrorPanel
-        title="Error encountered while fetching search results"
-        error={error}
-      />
-    );
-  }
-
-  if (!resultItems?.length) {
-    return <>{noResultsComponent}</>;
-  }
-
-  return <List {...rest}>{resultItems.map(renderResultItem)}</List>;
+  return (
+    <SearchResultStateBoundary
+      loading={loading}
+      error={error}
+      isEmpty={!resultItems?.length}
+      noResultsComponent={noResultsComponent}
+    >
+      <List {...rest}>{(resultItems ?? []).map(renderResultItem)}</List>
+    </SearchResultStateBoundary>
+  );
 };
 
 /**
