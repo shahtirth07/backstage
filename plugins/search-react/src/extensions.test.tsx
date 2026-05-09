@@ -192,4 +192,72 @@ describe('extensions', () => {
     expect(screen.getByText('Search Result 1')).toBeInTheDocument();
     expect(screen.getByText('Search Result 2')).toBeInTheDocument();
   });
+
+  it('falls back to the default list item when no predicate matches', async () => {
+    const plugin = createPlugin({ id: 'plugin' });
+    const ExploreSearchResultListItemExtension = createExtension(plugin, {
+      predicate: (result: SearchResult) => result.type === 'explore',
+      component: async () => (props: { result?: SearchDocument }) =>
+        (
+          <>
+            <ListItemText primary="Explore" secondary={props.result?.title} />
+          </>
+        ),
+    });
+
+    await renderInTestApp(
+      <TestApiProvider apis={[[analyticsApiRef, analyticsApiMock]]}>
+        <SearchResultListItemExtensions results={results}>
+          <ExploreSearchResultListItemExtension />
+        </SearchResultListItemExtensions>
+      </TestApiProvider>,
+    );
+
+    expect(screen.getAllByText('Explore')).toHaveLength(1);
+    expect(screen.queryByText('Default')).not.toBeInTheDocument();
+    expect(screen.getByText('Search Result 1')).toBeInTheDocument();
+    expect(
+      screen.getByText('Some text from the search result 2'),
+    ).toBeInTheDocument();
+  });
+
+  it('preserves precedence: first matching predicate wins over later predicates', async () => {
+    const plugin = createPlugin({ id: 'plugin' });
+    const PrimaryExploreExtension = createExtension(plugin, {
+      predicate: (result: SearchResult) => result.type === 'explore',
+      component: async () => (props: { result?: SearchDocument }) =>
+        (
+          <>
+            <ListItemText
+              primary="PrimaryExplore"
+              secondary={props.result?.title}
+            />
+          </>
+        ),
+    });
+    const SecondaryExploreExtension = createExtension(plugin, {
+      predicate: (result: SearchResult) => result.type === 'explore',
+      component: async () => (props: { result?: SearchDocument }) =>
+        (
+          <>
+            <ListItemText
+              primary="SecondaryExplore"
+              secondary={props.result?.title}
+            />
+          </>
+        ),
+    });
+
+    await renderInTestApp(
+      <TestApiProvider apis={[[analyticsApiRef, analyticsApiMock]]}>
+        <SearchResultListItemExtensions results={results}>
+          <PrimaryExploreExtension />
+          <SecondaryExploreExtension />
+        </SearchResultListItemExtensions>
+      </TestApiProvider>,
+    );
+
+    expect(screen.getAllByText('PrimaryExplore')).toHaveLength(1);
+    expect(screen.queryByText('SecondaryExplore')).not.toBeInTheDocument();
+  });
 });

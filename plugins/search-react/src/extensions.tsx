@@ -16,6 +16,7 @@
 
 import {
   Fragment,
+  ReactElement,
   ReactNode,
   PropsWithChildren,
   isValidElement,
@@ -44,34 +45,6 @@ import { DefaultResultListItem } from './components/DefaultResultListItem';
  */
 const SEARCH_RESULT_LIST_ITEM_EXTENSION =
   'search.results.list.items.extensions.v1';
-
-/**
- * @internal
- * Returns the first extension element found for a given result, and null otherwise.
- * @param elements - All extension elements.
- * @param result - The search result.
- */
-const findSearchResultListItemExtensionElement = (
-  elements: ReactNode[],
-  result: SearchResult,
-) => {
-  for (const element of elements) {
-    if (!isValidElement(element)) continue;
-    const predicate = getComponentData<(result: SearchResult) => boolean>(
-      element,
-      SEARCH_RESULT_LIST_ITEM_EXTENSION,
-    );
-    if (!predicate?.(result)) continue;
-    return cloneElement(element, {
-      rank: result.rank,
-      highlight: result.highlight,
-      result: result.document,
-      // Use props in situations where a consumer is manually rendering the extension
-      ...element.props,
-    });
-  }
-  return null;
-};
 
 /**
  * @public
@@ -183,6 +156,94 @@ export const createSearchResultListItemExtension = <
 };
 
 /**
+ * @internal
+ * One unit of the matching pipeline. A strategy attempts to produce a
+ * rendered element for a given search result. Returning `null` means the
+ * strategy abstains and the next strategy in the registry is tried.
+ *
+ * Strategies are evaluated in order of registration; the first non-null
+ * result wins. Replaces the previous ad hoc branching and makes the
+ * resolution precedence explicit and individually testable.
+ */
+type SearchResultListItemMatchStrategy = {
+  name: string;
+  match: (elements: ReactNode[], result: SearchResult) => ReactElement | null;
+};
+
+/**
+ * Primary strategy: render the first child extension whose registered
+ * predicate accepts the current result. Mirrors the previous behavior of
+ * the inline matcher inside `useSearchResultListItemExtensions`.
+ */
+const matchByRegisteredPredicate: SearchResultListItemMatchStrategy = {
+  name: 'predicate-match',
+  match: (elements, result) => {
+    for (const element of elements) {
+      if (!isValidElement(element)) continue;
+      const predicate = getComponentData<(r: SearchResult) => boolean>(
+        element,
+        SEARCH_RESULT_LIST_ITEM_EXTENSION,
+      );
+      if (!predicate?.(result)) continue;
+      return cloneElement(element, {
+        rank: result.rank,
+        highlight: result.highlight,
+        result: result.document,
+        // Use props in situations where a consumer is manually rendering the extension
+        ...element.props,
+      });
+    }
+    return null;
+  },
+};
+
+/**
+ * Terminal fallback strategy: always renders the built-in list item so the
+ * resolver is total.
+ */
+const matchByDefaultListItem: SearchResultListItemMatchStrategy = {
+  name: 'default-list-item',
+  match: (_elements, result) => (
+    <SearchResultListItemExtension rank={result.rank} result={result.document}>
+      <DefaultResultListItem
+        rank={result.rank}
+        highlight={result.highlight}
+        result={result.document}
+      />
+    </SearchResultListItemExtension>
+  ),
+};
+
+/**
+ * Ordered registry of matching strategies. Order encodes resolution
+ * precedence: try predicate-bearing extensions first, then fall back to
+ * the built-in list item. New strategies can be inserted here without
+ * touching the resolver or its callers.
+ */
+const searchResultListItemMatchStrategies: SearchResultListItemMatchStrategy[] =
+  [matchByRegisteredPredicate, matchByDefaultListItem];
+
+/**
+ * @internal
+ * Walks the strategy registry in order and returns the first non-null
+ * element produced. Always returns an element because the
+ * default-list-item strategy is unconditional.
+ */
+const resolveSearchResultListItemElement = (
+  elements: ReactNode[],
+  result: SearchResult,
+): ReactElement => {
+  for (const strategy of searchResultListItemMatchStrategies) {
+    const matched = strategy.match(elements, result);
+    if (matched) return matched;
+  }
+  // Unreachable: the default-list-item strategy is unconditional.
+  throw new Error(
+    'No search result list item match strategy produced an element',
+  );
+};
+
+/**
  * @public
  * Returns a function that renders a result using extensions.
  */
@@ -200,29 +261,11 @@ export const useSearchResultListItemExtensions = (children: ReactNode) => {
   );
 
   return useCallback(
-    (result: SearchResult, key?: number) => {
-      const element = findSearchResultListItemExtensionElement(
-        elements,
-        result,
-      );
-
-      return (
-        <Fragment key={key}>
-          {element ?? (
-            <SearchResultListItemExtension
-              rank={result.rank}
-              result={result.document}
-            >
-              <DefaultResultListItem
-                rank={result.rank}
-                highlight={result.highlight}
-                result={result.document}
-              />
-            </SearchResultListItemExtension>
-          )}
-        </Fragment>
-      );
-    },
+    (result: SearchResult, key?: number) => (
+      <Fragment key={key}>
+        {resolveSearchResultListItemElement(elements, result)}
+      </Fragment>
+    ),
     [elements],
   );
 };
