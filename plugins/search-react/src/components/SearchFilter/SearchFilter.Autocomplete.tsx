@@ -42,7 +42,6 @@ export type SearchAutocompleteFilterProps = SearchFilterComponentProps & {
 export const AutocompleteFilter = (props: SearchAutocompleteFilterProps) => {
   const {
     className,
-    defaultValue,
     name,
     values: givenValues,
     valuesDebounceMs,
@@ -55,7 +54,6 @@ export const AutocompleteFilter = (props: SearchAutocompleteFilterProps) => {
   const { value: values, loading } = useResolvedFilterValues({
     name,
     values: givenValues,
-    defaultValue,
     inputValue,
     valuesDebounceMs,
   });

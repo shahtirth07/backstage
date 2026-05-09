@@ -60,7 +60,16 @@ describe('SearchFilter', () => {
     const CustomFilter = (props: { name: string }) => <h6>{props.name}</h6>;
 
     await renderInTestApp(
-      <SearchFilter name={name} component={CustomFilter} />,
+      <TestApiProvider
+        apis={[
+          [searchApiRef, searchApiMock],
+          [configApiRef, configApiMock],
+        ]}
+      >
+        <SearchContextProvider initialState={initialState}>
+          <SearchFilter name={name} component={CustomFilter} />
+        </SearchContextProvider>
+      </TestApiProvider>,
     );
 
     expect(screen.getByRole('heading', { name })).toBeInTheDocument();

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef } from 'react';
 import useAsyncFn from 'react-use/esm/useAsyncFn';
 import useDebounce from 'react-use/esm/useDebounce';
 
@@ -24,6 +24,36 @@ import {
   FilterValue,
   FilterValueWithLabel,
 } from './types';
+
+export type DefaultFilterInitializationState = 'pending' | 'applied' | 'skipped';
+
+type DefaultFilterInitializationEvent = 'apply' | 'skip';
+
+export function resolveDefaultFilterInitializationState(
+  state: DefaultFilterInitializationState,
+  event: DefaultFilterInitializationEvent,
+): DefaultFilterInitializationState {
+  if (state !== 'pending') {
+    return state;
+  }
+
+  return event === 'apply' ? 'applied' : 'skipped';
+}
+
+function normalizeDefaultFilterValue(
+  defaultValue?: string | string[] | null,
+): string | string[] | undefined {
+  if (defaultValue === undefined || defaultValue === null) {
+    return undefined;
+  }
+
+  if (Array.isArray(defaultValue)) {
+    const normalized = defaultValue.filter(value => value.length > 0);
+    return normalized.length > 0 ? normalized : undefined;
+  }
+
+  return defaultValue.length > 0 ? defaultValue : undefined;
+}
 
 /**
  * Utility hook for either asynchronously loading filter values from a given
@@ -140,14 +170,29 @@ export const useDefaultFilterValue = (
   defaultValue?: string | string[] | null,
 ) => {
   const { setFilters } = useSearch();
+  const [initializationState, setInitializationState] = useReducer(
+    resolveDefaultFilterInitializationState,
+    'pending',
+  );
 
   useEffect(() => {
-    if (defaultValue && [defaultValue].flat().length > 0) {
-      setFilters(prevFilters => ({
-        ...prevFilters,
-        [name]: defaultValue,
-      }));
+    if (initializationState !== 'pending') {
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    const normalizedDefaultValue = normalizeDefaultFilterValue(defaultValue);
+
+    if (normalizedDefaultValue === undefined) {
+      setInitializationState('skip');
+      return;
+    }
+
+    setFilters(prevFilters =>
+      prevFilters[name] === undefined
+        ? { ...prevFilters, [name]: normalizedDefaultValue }
+        : prevFilters,
+    );
+
+    setInitializationState('apply');
+  }, [defaultValue, initializationState, name, setFilters]);
 };

@@ -29,7 +29,7 @@ import {
   AutocompleteFilter,
   SearchAutocompleteFilterProps,
 } from './SearchFilter.Autocomplete';
-import { useResolvedFilterValues } from './hooks';
+import { useDefaultFilterValue, useResolvedFilterValues } from './hooks';
 import { FilterValue } from './types';
 import { useTranslationRef } from '@backstage/frontend-plugin-api';
 import { searchReactTranslationRef } from '../../translation';
@@ -86,7 +86,6 @@ export type SearchFilterWrapperProps = SearchFilterComponentProps & {
 export const CheckboxFilter = (props: SearchFilterComponentProps) => {
   const {
     className,
-    defaultValue,
     label: formLabel,
     name,
     values: givenValues = [],
@@ -97,7 +96,6 @@ export const CheckboxFilter = (props: SearchFilterComponentProps) => {
   const { value: values = [], loading } = useResolvedFilterValues({
     name,
     values: givenValues,
-    defaultValue,
     inputValue: '',
     valuesDebounceMs,
   });
@@ -155,7 +153,6 @@ export const CheckboxFilter = (props: SearchFilterComponentProps) => {
 export const SelectFilter = (props: SearchFilterComponentProps) => {
   const {
     className,
-    defaultValue,
     label,
     name,
     values: givenValues,
@@ -165,7 +162,6 @@ export const SelectFilter = (props: SearchFilterComponentProps) => {
   const { value: values = [], loading } = useResolvedFilterValues({
     name,
     values: givenValues,
-    defaultValue,
     inputValue: '',
     valuesDebounceMs,
   });
@@ -210,6 +206,7 @@ export const SelectFilter = (props: SearchFilterComponentProps) => {
  */
 const SearchFilter = (props: SearchFilterWrapperProps) => {
   const { component: Element, ...elementProps } = props;
+  useDefaultFilterValue(elementProps.name, elementProps.defaultValue);
   return <Element {...elementProps} />;
 };
 

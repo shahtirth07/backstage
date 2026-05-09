@@ -20,7 +20,11 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { searchApiRef } from '../../api';
 import { SearchContextProvider, useSearch } from '../../context';
-import { useDefaultFilterValue, useAsyncFilterValues } from './hooks';
+import {
+  resolveDefaultFilterInitializationState,
+  useDefaultFilterValue,
+  useAsyncFilterValues,
+} from './hooks';
 import { configApiRef } from '@backstage/core-plugin-api';
 
 jest.useFakeTimers();
@@ -104,6 +108,33 @@ describe('SearchFilter.hooks', () => {
 
       await waitFor(() => {
         expect(result.current.filters[expectedFilter]).toEqual(expectedValue);
+      });
+    });
+
+    it('should not overwrite an existing filter with default value', async () => {
+      const expectedFilter = 'someField';
+      const existingValue = 'existingValue';
+      const defaultValue = 'defaultValue';
+      const { result } = renderHook(
+        () => {
+          useDefaultFilterValue(expectedFilter, defaultValue);
+          return useSearch();
+        },
+        {
+          wrapper: ({ children }) =>
+            wrapper({
+              children,
+              overrides: {
+                filters: {
+                  [expectedFilter]: existingValue,
+                },
+              },
+            }),
+        },
+      );
+
+      await waitFor(() => {
+        expect(result.current.filters[expectedFilter]).toEqual(existingValue);
       });
     });
 
@@ -235,6 +266,29 @@ describe('SearchFilter.hooks', () => {
       await waitFor(() => {
         expect(result.current.filters.unrelatedField).toEqual('unrelatedValue');
       });
+    });
+  });
+
+  describe('resolveDefaultFilterInitializationState', () => {
+    it('transitions pending state to applied', () => {
+      expect(resolveDefaultFilterInitializationState('pending', 'apply')).toBe(
+        'applied',
+      );
+    });
+
+    it('transitions pending state to skipped', () => {
+      expect(resolveDefaultFilterInitializationState('pending', 'skip')).toBe(
+        'skipped',
+      );
+    });
+
+    it('does not transition from terminal states', () => {
+      expect(resolveDefaultFilterInitializationState('applied', 'skip')).toBe(
+        'applied',
+      );
+      expect(resolveDefaultFilterInitializationState('skipped', 'apply')).toBe(
+        'skipped',
+      );
     });
   });
 
