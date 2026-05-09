@@ -86,7 +86,6 @@ export type SearchFilterWrapperProps = SearchFilterComponentProps & {
 export const CheckboxFilter = (props: SearchFilterComponentProps) => {
   const {
     className,
-    defaultValue,
     label: formLabel,
     name,
     values: givenValues = [],
@@ -94,7 +93,6 @@ export const CheckboxFilter = (props: SearchFilterComponentProps) => {
   } = props;
   const classes = useStyles();
   const { filters, setFilters } = useSearch();
-  useDefaultFilterValue(name, defaultValue);
   const asyncValues =
     typeof givenValues === 'function' ? givenValues : undefined;
   const defaultValues =
@@ -161,14 +159,12 @@ export const CheckboxFilter = (props: SearchFilterComponentProps) => {
 export const SelectFilter = (props: SearchFilterComponentProps) => {
   const {
     className,
-    defaultValue,
     label,
     name,
     values: givenValues,
     valuesDebounceMs,
   } = props;
   const { t } = useTranslationRef(searchReactTranslationRef);
-  useDefaultFilterValue(name, defaultValue);
   const asyncValues =
     typeof givenValues === 'function' ? givenValues : undefined;
   const defaultValues =
@@ -222,6 +218,7 @@ export const SelectFilter = (props: SearchFilterComponentProps) => {
  */
 const SearchFilter = (props: SearchFilterWrapperProps) => {
   const { component: Element, ...elementProps } = props;
+  useDefaultFilterValue(elementProps.name, elementProps.defaultValue);
   return <Element {...elementProps} />;
 };
 

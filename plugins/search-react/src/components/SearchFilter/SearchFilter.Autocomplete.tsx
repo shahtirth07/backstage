@@ -23,7 +23,7 @@ import Autocomplete, {
 } from '@material-ui/lab/Autocomplete';
 
 import { useSearch } from '../../context';
-import { useAsyncFilterValues, useDefaultFilterValue } from './hooks';
+import { useAsyncFilterValues } from './hooks';
 import { SearchFilterComponentProps } from './SearchFilter';
 import { ensureFilterValueWithLabel, FilterValueWithLabel } from './types';
 
@@ -42,7 +42,6 @@ export type SearchAutocompleteFilterProps = SearchFilterComponentProps & {
 export const AutocompleteFilter = (props: SearchAutocompleteFilterProps) => {
   const {
     className,
-    defaultValue,
     name,
     values: givenValues,
     valuesDebounceMs,
@@ -52,7 +51,6 @@ export const AutocompleteFilter = (props: SearchAutocompleteFilterProps) => {
     multiple,
   } = props;
   const [inputValue, setInputValue] = useState<string>('');
-  useDefaultFilterValue(name, defaultValue);
   const asyncValues =
     typeof givenValues === 'function' ? givenValues : undefined;
   const defaultValues =
