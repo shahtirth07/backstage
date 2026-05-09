@@ -26,26 +26,13 @@ import {
 import { json } from 'express';
 import Router from 'express-promise-router';
 import { McpService } from './services/McpService';
+import { fetchWithTimeout } from './services/fetchWithTimeout';
 import { createStreamableRouter } from './routers/createStreamableRouter';
 import { createSseRouter } from './routers/createSseRouter';
 import {
   actionsRegistryServiceRef,
   actionsServiceRef,
 } from '@backstage/backend-plugin-api/alpha';
-
-async function fetchWithTimeout(
-  url: string,
-  timeoutMs: number,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutHandle);
-  }
-}
 
 function toSafeHttpUrl(urlRaw: string): URL | undefined {
   try {
@@ -127,10 +114,9 @@ function registerOidcDiscoveryRouteIfEnabled(options: {
         authBaseUrl,
       ).toString();
 
-      const oidcResponse = await fetchWithTimeout(
-        openIdConfigurationUrl,
-        10_000,
-      );
+      const oidcResponse = await fetchWithTimeout(openIdConfigurationUrl, {
+        timeoutMs: 10_000,
+      });
 
       if (!oidcResponse.ok) {
         logger.error(oidcDiscoveryErrorMessage, {
