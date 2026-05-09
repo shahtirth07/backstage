@@ -91,6 +91,46 @@ export const useAsyncFilterValues = (
 };
 
 /**
+ * Shared workflow hook used by search filter controls.
+ *
+ * Applies a default filter value in search context, then resolves option values
+ * from either a static list or an async provider.
+ *
+ * @public
+ */
+export const useResolvedFilterValues = (options: {
+  name: string;
+  values?: FilterValue[] | ((partial: string) => Promise<FilterValue[]>);
+  defaultValue?: string | string[] | null;
+  inputValue?: string;
+  valuesDebounceMs?: number;
+}) => {
+  const {
+    name,
+    values: givenValues,
+    defaultValue,
+    inputValue = '',
+    valuesDebounceMs,
+  } = options;
+
+  useDefaultFilterValue(name, defaultValue);
+
+  const asyncValues =
+    typeof givenValues === 'function' ? givenValues : undefined;
+  const defaultValues =
+    typeof givenValues === 'function'
+      ? undefined
+      : givenValues?.map(v => ensureFilterValueWithLabel(v));
+
+  return useAsyncFilterValues(
+    asyncValues,
+    inputValue,
+    defaultValues,
+    valuesDebounceMs,
+  );
+};
+
+/**
  * Utility hook for applying a given default value to the search context.
  *
  * @public
